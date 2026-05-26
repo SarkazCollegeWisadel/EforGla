@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI 英语学习教室</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;600;700&family=Inter:wght@400;500;600&family=Kalam:wght@400;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div id="app">
+    <section id="page-welcome" class="page active">
+      <div class="scene-bg"></div>
+      <div class="welcome-copy">
+        <p class="eyebrow">AI English Classroom</p>
+        <h1>安静地学一点英语</h1>
+        <p>像走进一间放学后的教室。角色在旁边，黑板上只写今天需要记住的东西。</p>
+        <button id="btn-start" class="soft-command">进入教室</button>
+      </div>
+    </section>
+
+    <section id="page-settings" class="page">
+      <div class="scene-bg"></div>
+      <div class="settings-sheet">
+        <header>
+          <p class="eyebrow">Before Class</p>
+          <h2>课前准备</h2>
+          <p>只保留必要设置。开始后，更多选项会安静地收在角落里。</p>
+        </header>
+
+        <div class="setting-group">
+          <h3>陪你学习的角色</h3>
+          <div id="character-grid" class="character-grid"></div>
+        </div>
+
+        <div class="setting-row">
+          <label>
+            难度
+            <select id="difficulty-select">
+              <option value="easy">简单（初中）</option>
+              <option value="medium" selected>中等（CET-4）</option>
+              <option value="hard">困难（CET-6）</option>
+            </select>
+          </label>
+          <label>
+            自定义立绘 URL
+            <input id="sprite-url" type="text" placeholder="留空使用默认立绘">
+          </label>
+        </div>
+
+        <div class="setting-row quiet-row">
+          <label class="check-line">
+            <input id="ai-mode-toggle" type="checkbox" checked>
+            <span>角色化讲解</span>
+          </label>
+          <label class="check-line">
+            <input id="tts-auto-toggle" type="checkbox">
+            <span>自动朗读对话</span>
+          </label>
+        </div>
+
+        <button id="btn-confirm-settings" class="soft-command wide">开始今天的课</button>
+      </div>
+    </section>
+
+    <section id="page-main" class="page">
+      <div class="scene-bg"></div>
+      <div class="scene-softlight"></div>
+
+      <aside id="character-stage">
+        <img id="character-sprite" class="character-sprite" src="assets/0.png" alt="角色立绘">
+      </aside>
+
+      <main id="blackboard-panel" aria-label="黑板学习区">
+        <nav id="mode-tabs" class="chalk-tabs" aria-label="学习模式">
+          <button class="mode-tab active" data-mode="learn">Learn</button>
+          <button class="mode-tab" data-mode="cards">Cards</button>
+          <button class="mode-tab" data-mode="test">Review</button>
+        </nav>
+
+        <section id="learn-content" class="board-layer mode-content active">
+          <div class="board-title">today's word</div>
+          <div id="learn-display" class="chalk-lesson">
+            <div id="learn-word-area" class="learn-word-area">
+              <span id="learn-word" class="learn-word">—</span>
+              <span id="learn-phonetic" class="learn-phonetic"></span>
+              <span id="learn-meaning" class="learn-meaning"></span>
+              <div id="learn-example-area" class="learn-example-area">
+                <p id="learn-example" class="learn-example"></p>
+                <p id="learn-example-cn" class="learn-example-cn"></p>
+              </div>
+              <div id="learn-memory-tip" class="learn-memory"></div>
+            </div>
+          </div>
+          <div class="learn-actions-bar">
+            <button id="btn-learn-prev" class="chalk-choice" title="上一个">←</button>
+            <span id="learn-progress" class="learn-progress">—</span>
+            <button id="btn-learn-next" class="chalk-choice" title="下一个">→</button>
+            <button id="btn-learn-sound" class="chalk-choice" title="朗读单词">♪</button>
+          </div>
+          <form id="learn-form" class="chalk-input learn-inquiry">
+            <input id="word-input" type="text" placeholder="查一个单词..." autocomplete="off">
+            <button id="btn-send" type="submit">查询</button>
+          </form>
+        </section>
+
+        <section id="cards-content" class="board-layer mode-content">
+          <div class="board-title">flash card</div>
+          <div class="flashcard-wrap">
+            <button id="flashcard" class="flashcard" type="button" aria-label="翻开闪卡">
+              <span class="card-face card-front">
+                <strong id="card-front-word" class="card-word">—</strong>
+                <em id="card-front-phonetic" class="card-phonetic"></em>
+                <small class="card-hint">点击翻开</small>
+              </span>
+              <span class="card-face card-back">
+                <strong id="card-back-meaning" class="card-back-word">—</strong>
+                <div class="card-back-detail">
+                  <p id="card-back-example" class="card-example-text"></p>
+                  <p id="card-back-example-cn" class="card-example-cn-text"></p>
+                  <em id="card-back-tip" class="card-tip-text"></em>
+                </div>
+              </span>
+            </button>
+            <div class="memory-actions">
+              <button id="btn-card-forgot" class="chalk-choice" type="button">没记住</button>
+              <button id="btn-card-remembered" class="chalk-choice" type="button">记住了</button>
+            </div>
+          </div>
+          <div id="cards-progress" class="board-progress">0 / 5 · 下一次复习：今天</div>
+          <div id="card-row" hidden></div>
+        </section>
+
+        <section id="test-content" class="board-layer mode-content">
+          <div class="board-title">gentle review</div>
+          <div class="review-wrap">
+            <span id="test-progress" class="board-progress">第 1 / 5 题</span>
+            <strong id="test-word-display" class="review-word">apple</strong>
+            <em id="test-phonetic" class="review-phonetic">/ˈæpəl/</em>
+            <div id="test-input-container" class="review-input">
+              <input id="test-input" type="text" placeholder="写下你想到的中文意思">
+              <button id="btn-test-submit" type="button">交给她看</button>
+            </div>
+            <div id="test-result" class="review-feedback"></div>
+          </div>
+        </section>
+      </main>
+
+      <section id="dialogue-container">
+        <div id="dialogue-box">
+          <div id="dialogue-name" class="dialogue-name">格蕾修</div>
+          <div id="dialogue-text" class="dialogue-text">你来了。黑板已经擦好了。</div>
+          <button id="dialogue-voice" class="tiny-command" title="朗读当前对话">voice</button>
+          <div id="dialogue-continue" class="dialogue-continue">◆</div>
+        </div>
+      </section>
+
+      <header id="status-bar" aria-label="学习状态">
+        <div class="status-profile">
+          <span id="status-avatar" class="avatar">格</span>
+          <span><b id="status-char-name">格蕾修</b><small id="status-char-title">色彩小画家</small></span>
+        </div>
+        <div class="status-metrics">
+          <span>好感 <b id="stat-affection">0</b></span>
+          <span>Lv.<b id="stat-level">1</b></span>
+          <i class="exp-wrap"><em id="exp-bar-fill"></em></i>
+          <span id="exp-bar-text">0/100</span>
+        </div>
+      </header>
+
+      <nav id="adv-toolbar" aria-label="学习工具">
+        <button id="btn-char-switch" title="切换角色">角色</button>
+        <button id="btn-save" title="保存进度">保存</button>
+        <button id="btn-load" title="读取进度">读取</button>
+        <button id="btn-toolbar-settings" title="设置">设置</button>
+      </nav>
+
+      <div id="char-info-card" class="char-info-card" hidden>
+        <strong id="char-info-name">格蕾修</strong>
+        <span id="char-info-detail">色彩小画家 · Lv.1</span>
+      </div>
+    </section>
+
+    <div id="save-modal" class="modal-overlay" aria-hidden="true">
+      <div class="modal-content save-modal-content">
+        <header class="modal-header">
+          <h3 id="save-modal-title">存档管理</h3>
+          <button id="btn-save-close" class="tiny-command">close</button>
+        </header>
+        <div id="save-slot-list" class="save-slot-list"></div>
+        <div class="modal-actions">
+          <button id="btn-save-export" class="soft-command secondary" style="display:none">导出</button>
+          <button id="btn-save-cancel" class="soft-command secondary">取消</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="settings-modal" class="modal-overlay" aria-hidden="true">
+      <div class="modal-content">
+        <header class="modal-header">
+          <h3>安静设置</h3>
+          <button id="btn-modal-close" class="tiny-command">close</button>
+        </header>
+        <div id="modal-character-grid" class="character-grid compact"></div>
+        <div class="setting-row">
+          <label>难度<select id="modal-difficulty">
+            <option value="easy">简单（初中）</option>
+            <option value="medium" selected>中等（CET-4）</option>
+            <option value="hard">困难（CET-6）</option>
+          </select></label>
+          <label>立绘 URL<input id="modal-sprite-url" type="text" placeholder="留空使用默认立绘"></label>
+        </div>
+        <div class="setting-row">
+          <label>语音<select id="modal-voice-select"></select></label>
+          <label>语速<input id="modal-voice-rate" type="range" min="0.7" max="1.4" step="0.05"></label>
+          <label>音调<input id="modal-voice-pitch" type="range" min="0.7" max="1.4" step="0.05"></label>
+        </div>
+        <label class="check-line"><input id="modal-auto-speak" type="checkbox"><span>自动朗读对话</span></label>
+        <div class="setting-row sprite-size-area">
+          <label>
+            角色立绘大小
+            <div class="sprite-size-controls">
+              <div id="modal-sprite-size-presets" class="sprite-size-presets">
+                <button type="button" class="tiny-command" data-size="45">小</button>
+                <button type="button" class="tiny-command active" data-size="62">中</button>
+                <button type="button" class="tiny-command" data-size="78">大</button>
+              </div>
+              <div class="sprite-size-slider-row">
+                <input id="modal-sprite-size" type="range" min="30" max="85" step="1">
+                <span id="modal-sprite-size-value" class="sprite-size-value">62</span>
+              </div>
+            </div>
+          </label>
+        </div>
+        <details class="ai-provider-details">
+          <summary class="ai-provider-summary">AI 接入配置</summary>
+          <div class="setting-row">
+            <label>Provider<select id="modal-ai-provider">
+              <option value="mock">本地离线 (Mock)</option>
+              <option value="openai">OpenAI</option>
+              <option value="deepseek">DeepSeek</option>
+              <option value="claude">Claude</option>
+              <option value="gemini">Gemini</option>
+            </select></label>
+            <label>API Key<input id="modal-ai-key" type="password" placeholder="暂不填写，使用离线模式"></label>
+          </div>
+          <div class="setting-row">
+            <label>Endpoint<input id="modal-ai-endpoint" type="text" placeholder="可选，默认使用官方 API"></label>
+            <label>Model<input id="modal-ai-model" type="text" placeholder="可选，默认使用官方推荐模型"></label>
+          </div>
+        </details>
+        <div class="modal-actions">
+          <button id="btn-voice-test" class="soft-command secondary">试听</button>
+          <button id="btn-modal-save" class="soft-command">保存</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="data.js"></script>
+  <script src="characters.js"></script>
+  <script src="WordManager.js"></script>
+  <script src="AIManager.js"></script>
+  <script src="SaveManager.js"></script>
+  <script src="TTSManager.js"></script>
+  <script src="wordBankLoader.js"></script>
+  <script src="aiProvider.js"></script>
+  <script src="learning.js"></script>
+  <script src="aiService.js"></script>
+  <script src="api.js"></script>
+  <script src="tts.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
