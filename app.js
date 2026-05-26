@@ -37,6 +37,12 @@ const App = {
     this.state.characters = await CharacterManager.init();
     await WordManager.init();
     SaveManager.init();
+    LearningState.init(this.state.settings.difficulty);
+    // Restore persisted learning state
+    if (window.__pendingLearningState) {
+      LearningState.deserialize(window.__pendingLearningState);
+      delete window.__pendingLearningState;
+    }
     this.ensureCharacter();
     this.bindEvents();
     this.renderCharacterSelection(this.dom.characterGrid, this.state.settings.characterId);
@@ -61,22 +67,40 @@ const App = {
       characterSprite: byId("character-sprite"), charInfoName: byId("char-info-name"),
       charInfoDetail: byId("char-info-detail"), modeTabs: byId("mode-tabs"),
       learnContent: byId("learn-content"), cardsContent: byId("cards-content"), testContent: byId("test-content"),
-      wordInput: byId("word-input"), btnSend: byId("btn-send"),
+      // Learn mode — three-column
+      learnBankLabel: byId("learn-bank-label"), learnRangeLabel: byId("learn-range-label"),
+      previewLearned: byId("preview-learned"), previewTotal: byId("preview-total"),
+      previewFamiliarity: byId("preview-familiarity"),
+      learnWordList: byId("learn-word-list"), btnStartLearning: byId("btn-start-learning"),
+      learnBeforeStart: byId("learn-before-start"),
       learnWord: byId("learn-word"), learnPhonetic: byId("learn-phonetic"), learnMeaning: byId("learn-meaning"),
       learnExample: byId("learn-example"), learnExampleCn: byId("learn-example-cn"),
       learnMemoryTip: byId("learn-memory-tip"), learnProgress: byId("learn-progress"),
-      btnLearnPrev: byId("btn-learn-prev"), btnLearnNext: byId("btn-learn-next"), btnLearnSound: byId("btn-learn-sound"),
+      learnWordArea: byId("learn-word-area"), learnSessionProgress: byId("learn-session-progress"),
+      btnLearnPrev: byId("btn-learn-prev"), btnLearnNext: byId("btn-learn-next"),
+      btnLearnSound: byId("btn-learn-sound"), btnMarkLearned: byId("btn-mark-learned"),
+      learnNavBar: byId("learn-nav-bar"),
+      learnCharName: byId("learn-char-name"), learnCharDialogue: byId("learn-char-dialogue"),
+      btnLearnListen: byId("btn-learn-listen"),
+      // Flash cards
       flashcard: byId("flashcard"), cardFrontWord: byId("card-front-word"), cardFrontPhonetic: byId("card-front-phonetic"),
       cardBackMeaning: byId("card-back-meaning"), cardBackExample: byId("card-back-example"),
       cardBackExampleCn: byId("card-back-example-cn"), cardBackTip: byId("card-back-tip"),
-      cardsProgress: byId("cards-progress"), btnCardForgot: byId("btn-card-forgot"), btnCardRemembered: byId("btn-card-remembered"),
+      cardsProgress: byId("cards-progress"), cardActions: byId("card-actions"),
+      btnCardForgot: byId("btn-card-forgot"), btnCardRemembered: byId("btn-card-remembered"),
+      cardsEmpty: byId("cards-empty"), cardsRememberedTotal: byId("cards-remembered-total"),
+      btnCardsRestart: byId("btn-cards-restart"),
+      // Review
       testProgress: byId("test-progress"), testWordDisplay: byId("test-word-display"), testPhonetic: byId("test-phonetic"),
       testInput: byId("test-input"), btnTestSubmit: byId("btn-test-submit"),
       testInputContainer: byId("test-input-container"), testResult: byId("test-result"),
+      // Dialogue
       dialogueName: byId("dialogue-name"), dialogueText: byId("dialogue-text"),
       dialogueContinue: byId("dialogue-continue"), dialogueVoice: byId("dialogue-voice"),
+      // Toolbar
       btnCharSwitch: byId("btn-char-switch"), btnSave: byId("btn-save"), btnLoad: byId("btn-load"),
       btnToolbarSettings: byId("btn-toolbar-settings"),
+      // Settings modal
       settingsModal: byId("settings-modal"), modalCharacterGrid: byId("modal-character-grid"),
       modalDifficulty: byId("modal-difficulty"), modalSpriteUrl: byId("modal-sprite-url"),
       modalVoiceSelect: byId("modal-voice-select"), modalVoiceRate: byId("modal-voice-rate"),
@@ -86,6 +110,7 @@ const App = {
       spriteSizePresets: byId("modal-sprite-size-presets"),
       modalAiProvider: byId("modal-ai-provider"), modalAiKey: byId("modal-ai-key"),
       modalAiEndpoint: byId("modal-ai-endpoint"), modalAiModel: byId("modal-ai-model"),
+      // Save modal
       saveModal: byId("save-modal"), saveModalTitle: byId("save-modal-title"),
       saveSlotList: byId("save-slot-list"), btnSaveClose: byId("btn-save-close"),
       btnSaveExport: byId("btn-save-export"), btnSaveCancel: byId("btn-save-cancel")
@@ -99,26 +124,34 @@ const App = {
     this.dom.btnConfirmSettings.addEventListener("click", () => this.saveSettingsFromPage());
     this.dom.characterGrid.addEventListener("click", (e) => this.handleCharacterGridClick(e, false));
     this.dom.modalCharacterGrid.addEventListener("click", (e) => this.handleCharacterGridClick(e, true));
-    this.dom.wordInput.addEventListener("keydown", (e) => { if (e.key === "Enter") this.handleInquiry(); });
-    this.dom.btnSend.addEventListener("click", () => this.handleInquiry());
     this.dom.modeTabs.addEventListener("click", (e) => {
       const btn = e.target.closest("[data-mode]");
       if (btn) this.switchMode(btn.dataset.mode);
     });
+    /* ── Learn events ── */
+    this.dom.btnStartLearning.addEventListener("click", () => this.beginLearnSession());
+    this.dom.btnLearnPrev.addEventListener("click", () => this.navigateLearn(-1));
+    this.dom.btnLearnNext.addEventListener("click", () => this.navigateLearn(1));
+    this.dom.btnLearnSound.addEventListener("click", () => this.speakLearnWord());
+    this.dom.btnMarkLearned.addEventListener("click", () => this.markCurrentWord());
+    this.dom.btnLearnListen.addEventListener("click", () => this.readLearnDialogue());
+    /* ── Card events ── */
     this.dom.flashcard.addEventListener("click", () => this.flipCard());
     this.dom.btnCardForgot.addEventListener("click", () => this.answerCard(false));
     this.dom.btnCardRemembered.addEventListener("click", () => this.answerCard(true));
+    this.dom.btnCardsRestart.addEventListener("click", () => this.startCards());
+    /* ── Review events ── */
     this.dom.btnTestSubmit.addEventListener("click", () => this.checkTestAnswer());
     this.dom.testInput.addEventListener("keydown", (e) => { if (e.key === "Enter") this.checkTestAnswer(); });
+    /* ── Dialogue ── */
     this.dom.dialogueText.addEventListener("click", () => this.skipTypewriter());
     this.dom.dialogueVoice.addEventListener("click", () => this.speakCurrentDialogue());
+    /* ── Toolbar ── */
     this.dom.btnCharSwitch.addEventListener("click", () => this.openSettingsModal());
     this.dom.btnSave.addEventListener("click", () => this.openSaveModal("save"));
     this.dom.btnLoad.addEventListener("click", () => this.openSaveModal("load"));
     this.dom.btnToolbarSettings.addEventListener("click", () => this.openSettingsModal());
-    this.dom.btnLearnPrev.addEventListener("click", () => this.navigateLearn(-1));
-    this.dom.btnLearnNext.addEventListener("click", () => this.navigateLearn(1));
-    this.dom.btnLearnSound.addEventListener("click", () => this.speakLearnWord());
+    /* ── Settings modal ── */
     this.dom.btnModalClose.addEventListener("click", () => this.closeSettingsModal());
     this.dom.settingsModal.addEventListener("click", (e) => { if (e.target === this.dom.settingsModal) this.closeSettingsModal(); });
     this.dom.btnVoiceTest.addEventListener("click", () => {
@@ -128,6 +161,7 @@ const App = {
     this.dom.btnModalSave.addEventListener("click", () => this.saveModalSettings());
     this.dom.spriteSizeSlider.addEventListener("input", () => this.handleSpriteSizeChange());
     this.dom.spriteSizePresets.addEventListener("click", (e) => this.handleSpritePresetClick(e));
+    /* ── Save modal ── */
     this.dom.btnSaveClose.addEventListener("click", () => this.closeSaveModal());
     this.dom.btnSaveCancel.addEventListener("click", () => this.closeSaveModal());
     this.dom.btnSaveExport.addEventListener("click", () => this.exportSaveSlot());
@@ -150,6 +184,7 @@ const App = {
   onEnterMain() {
     this.ensureCharacter();
     this.updateAllCharacterViews();
+    LearningState.init(this.state.settings.difficulty);
     this.switchMode("learn");
     this.setDialogue(this.state.character.name, this.state.character.greeting);
   },
@@ -202,6 +237,7 @@ const App = {
     this.state.settings.aiMode = this.dom.aiModeToggle.checked;
     this.state.settings.voice.autoSpeakDialogue = this.dom.ttsAutoToggle.checked;
     WordManager.setDifficulty(this.state.settings.difficulty);
+    LearningState.init(this.state.settings.difficulty);
     this.ensureCharacter();
     this.saveData();
     this.showPage("main");
@@ -266,17 +302,62 @@ const App = {
   },
 
   /* ════════════════════════════════════════════════
-     LEARN MODE — Auto-teaching with word bank
+     LEARN MODE — Preview → Session → Character teaching
      ════════════════════════════════════════════════ */
 
   startLearn() {
-    const session = WordManager.startLearnSession(this.state.settings.difficulty, 10);
+    this.renderLearnPreview();
+    this.updateLearnCharDialogue("从左边看今天要学的范围。准备好了就点「开始学习」。");
+  },
+
+  renderLearnPreview() {
+    const diffLabel = WordManager.getDifficultyLabel(LearningState.difficulty);
+    this.dom.learnBankLabel.textContent = diffLabel;
+    this.dom.learnRangeLabel.textContent = `${LearningState.rangeStart + 1}-${Math.min(LearningState.rangeEnd, WordManager.getWordCount(LearningState.difficulty))}`;
+
+    // Stats
+    const stats = LearningState.getSessionStats(this.state.wordHistory);
+    this.dom.previewLearned.textContent = stats.learned;
+    this.dom.previewTotal.textContent = stats.total;
+    this.dom.previewFamiliarity.textContent = stats.avgFamiliarity;
+
+    // Word list
+    this.dom.learnWordList.innerHTML = "";
+    LearningState.rangeWords.forEach((word, i) => {
+      const state = LearningState.getWordState(this.state.wordHistory, word);
+      const item = document.createElement("div");
+      item.className = `preview-word-item${i === LearningState.currentIndex ? " active" : ""}${state === "mastered" ? " mastered" : state === "learning" || state === "familiar" ? " learning" : ""}`;
+      item.dataset.index = i;
+      item.innerHTML = `<span class="preview-word-indicator"></span><span class="preview-word-text">${word.english}</span>`;
+      item.addEventListener("click", () => {
+        if (LearningState.isInSession()) {
+          LearningState.currentIndex = i;
+          this.renderLearnWord();
+        }
+      });
+      this.dom.learnWordList.appendChild(item);
+    });
+
+    // Show pre-start state
+    this.dom.learnBeforeStart.style.display = LearningState.isInSession() ? "none" : "";
+    if (this.dom.learnWordArea) this.dom.learnWordArea.style.display = LearningState.isInSession() ? "" : "none";
+    if (this.dom.learnNavBar) this.dom.learnNavBar.style.display = LearningState.isInSession() ? "" : "none";
+
+    if (LearningState.isInSession()) this.renderLearnWord();
+  },
+
+  beginLearnSession() {
+    LearningState.enterLearn();
     this.renderLearnWord();
-    this.setDialogue(this.state.character.name, "今天的词我已经准备好了。一个一个看过去，不着急。");
+    this.renderLearnPreview();
+    const word = LearningState.getCurrentWord();
+    if (word) {
+      this.setLearnCharacterDialogue(word);
+    }
   },
 
   renderLearnWord() {
-    const word = WordManager.getCurrentLearnWord();
+    const word = LearningState.getCurrentWord();
     if (!word) {
       this.dom.learnWord.textContent = "—";
       this.dom.learnPhonetic.textContent = "";
@@ -293,111 +374,134 @@ const App = {
     this.dom.learnExample.textContent = word.example || "";
     this.dom.learnExampleCn.textContent = word.exampleChinese || "";
     this.dom.learnMemoryTip.textContent = AIManager.makeMemoryTip({ word: word.english, meaning: word.chinese });
-    const prog = WordManager.getLearnProgress();
+    const prog = LearningState.getLearnProgress();
     this.dom.learnProgress.textContent = `${prog.current} / ${prog.total}`;
+
+    // Session progress bar
+    const stats = LearningState.getSessionStats(this.state.wordHistory);
+    this.dom.learnSessionProgress.textContent = `已学 ${stats.learned} 词 · 熟练 ${stats.avgFamiliarity}%`;
+
+    // Update word list highlight
+    this.dom.learnWordList.querySelectorAll(".preview-word-item").forEach((el, i) => {
+      el.classList.toggle("active", i === LearningState.currentIndex);
+    });
+
+    // Character teaching tied to this word
+    this.setLearnCharacterDialogue(word);
   },
 
   navigateLearn(dir) {
-    const word = dir < 0 ? WordManager.prevLearnWord() : WordManager.nextLearnWord();
+    const word = dir < 0 ? LearningState.goPrev() : LearningState.goNext();
     this.renderLearnWord();
-    if (word) {
-      this.setDialogue(this.state.character.name, AIManager.makeCharacterComment({
-        word: word.english, meaning: word.chinese, character: this.state.character, example: word.example
-      }));
-    }
   },
 
   speakLearnWord() {
-    const word = WordManager.getCurrentLearnWord();
+    const word = LearningState.getCurrentWord();
     if (word) {
       TTSManager.speakWord(word.english, this.state.settings.voice);
     }
   },
 
-  async handleInquiry() {
-    const text = this.dom.wordInput.value.trim();
-    if (!text) return;
-    this.dom.wordInput.value = "";
-    // Show the inquired word in learn display
-    const wordData = WordManager.findInAllBanks(text);
-    if (wordData) {
-      this.dom.learnWord.textContent = wordData.english;
-      this.dom.learnPhonetic.textContent = wordData.phonetic || "";
-      this.dom.learnMeaning.textContent = wordData.chinese;
-      this.dom.learnExample.textContent = wordData.example || "";
-      this.dom.learnExampleCn.textContent = wordData.exampleChinese || "";
-      this.dom.learnMemoryTip.textContent = AIManager.makeMemoryTip({ word: wordData.english, meaning: wordData.chinese });
-      this.dom.learnProgress.textContent = "查询";
-      this.setDialogue(this.state.character.name, AIManager.makeCharacterComment({
-        word: wordData.english, meaning: wordData.chinese, character: this.state.character, example: wordData.example
-      }));
+  markCurrentWord() {
+    const word = LearningState.getCurrentWord();
+    if (!word) return;
+    LearningState.markLearned(this.state.wordHistory, word);
+    this.addExp(EXP_CONFIG.expPerWord);
+    this.addAffection(AFFECTION_CONFIG.perWordLearn);
+    this.renderLearnWord();
+    this.saveData();
+    this.setDialogue(this.state.character.name, `「${word.english}」记下了。线条留在这里了。`);
+  },
+
+  /* ── Learn character panel ── */
+
+  updateLearnCharDialogue(text) {
+    if (this.dom.learnCharName) this.dom.learnCharName.textContent = this.state.character?.name || "格蕾修";
+    if (this.dom.learnCharDialogue) this.dom.learnCharDialogue.textContent = text || "";
+  },
+
+  setLearnCharacterDialogue(word) {
+    if (!word) return;
+    const state = LearningState.getWordState(this.state.wordHistory, word);
+    const fam = LearningState.getFamiliarity(this.state.wordHistory, word);
+    const record = this.state.wordHistory[word.english.toLowerCase()];
+    const wrongCount = record?.wrongCount || 0;
+
+    // Generate context-aware character teaching
+    let dialogue;
+    if (state === "new") {
+      dialogue = AIManager.makeCharacterComment({
+        word: word.english, meaning: word.chinese, character: this.state.character, example: word.example
+      });
+    } else if (wrongCount > 0) {
+      dialogue = `${word.english}。这个词你上次错过 ${wrongCount} 次，现在再看一次——${word.chinese}。${word.example ? `例句：${word.example}` : ""}`;
     } else {
-      this.setDialogue(this.state.character.name, `「${text}」这个词我暂时还不认识。我们之后一起查。`);
+      dialogue = `「${word.english}」还记得吗？是「${word.chinese}」。${word.example ? `像这句：${word.example}` : ""}`;
     }
+    this.setLearnCharacterDialogueDirect(dialogue);
+  },
+
+  setLearnCharacterDialogueDirect(text) {
+    this.updateLearnCharDialogue(text);
+    if (this.state.settings.voice.autoSpeakDialogue) {
+      TTSManager.speak(text, this.state.settings.voice);
+    }
+  },
+
+  readLearnDialogue() {
+    const text = this.dom.learnCharDialogue?.textContent;
+    if (text) TTSManager.speak(text, this.state.settings.voice);
   },
 
   /* ════════════════════════════════════════════════
-     CARDS MODE — Flash cards with Ebbinghaus
+     CARDS MODE — Dynamic from LearningState + Ebbinghaus
      ════════════════════════════════════════════════ */
 
-  prepareScheduledCards() {
-    const count = DIFFICULTY_CONFIG[this.state.settings.difficulty]?.wordCount || 5;
-    const dueWords = WordManager.getDueWords(this.state.wordHistory, this.state.settings.difficulty);
-    const freshWords = WordManager.getRandomWords(this.state.settings.difficulty, count);
-    const merged = [...dueWords, ...freshWords];
-    const unique = [];
-    const seen = new Set();
-    for (const w of merged) {
-      const key = w.english.toLowerCase();
-      if (!seen.has(key)) { seen.add(key); unique.push({ ...w, flipped: false, remembered: null }); }
-      if (unique.length >= count) break;
-    }
-    return unique;
-  },
-
   startCards() {
-    this.state.cards.items = this.prepareScheduledCards();
-    this.state.cards.activeIndex = 0;
-    this.state.cards.drawn = 0;
-    this.state.cards.remembered = 0;
-    this.state.cards.wrong = 0;
+    LearningState.generateCards(this.state.wordHistory, 10);
     this.renderCards();
+    this.dom.cardsEmpty.style.display = "none";
+    this.dom.cardActions.style.display = "";
+    this.dom.flashcard.style.display = "";
     const dueCount = WordManager.getReviewStats(this.state.wordHistory).dueCount;
     if (dueCount > 0) {
-      this.setDialogue(this.state.character.name, `今天有 ${dueCount} 个单词需要复习。抽几张卡片过一遍。`);
+      this.setDialogue(this.state.character.name, `有 ${dueCount} 个单词需要巩固。抽几张卡片过一遍。`);
     } else {
-      this.setDialogue(this.state.character.name, "抽一张学习卡。先看英文，再翻过来。不要急。");
+      this.setDialogue(this.state.character.name, "从当前学习范围抽了一些词，翻翻看。");
     }
   },
 
   renderCards() {
     this.dom.flashcard.style.transition = "none";
-    const card = this.state.cards.items[this.state.cards.activeIndex];
-    if (!card) {
-      this.dom.cardFrontWord.textContent = "done";
-      this.dom.cardFrontPhonetic.textContent = "";
-      this.dom.cardBackMeaning.textContent = "今天的卡片已经复习完了";
-      this.dom.cardBackExample.textContent = "";
-      this.dom.cardBackExampleCn.textContent = "";
-      this.dom.cardBackTip.textContent = "";
-      this.dom.flashcard.classList.remove("flipped");
-      this.dom.cardsProgress.textContent = `完成：${this.state.cards.remembered}/${this.state.cards.items.length}`;
-    } else {
-      this.dom.flashcard.classList.toggle("flipped", card.flipped);
-      this.dom.cardFrontWord.textContent = card.english;
-      this.dom.cardFrontPhonetic.textContent = card.phonetic || "";
-      this.dom.cardBackMeaning.textContent = card.chinese;
-      this.dom.cardBackExample.textContent = card.example || "";
-      this.dom.cardBackExampleCn.textContent = card.exampleChinese || "";
-      this.dom.cardBackTip.textContent = AIManager.makeMemoryTip({ word: card.english, meaning: card.chinese });
-      const dueText = WordManager.getNextReviewText(this.state.wordHistory[card.english?.toLowerCase()]);
-      this.dom.cardsProgress.textContent = `${this.state.cards.drawn} / ${this.state.cards.items.length} · 复习：${dueText}`;
+    const card = LearningState.getCurrentCard();
+    if (!card || LearningState.cardDone) {
+      this.dom.flashcard.style.display = "none";
+      this.dom.cardActions.style.display = "none";
+      this.dom.cardsEmpty.style.display = "";
+      const prog = LearningState.getCardProgress();
+      this.dom.cardsRememberedTotal.textContent = prog.remembered;
+      this.dom.cardsProgress.textContent = `完成 ${prog.remembered}/${prog.total} 张`;
+      requestAnimationFrame(() => { this.dom.flashcard.style.transition = ""; });
+      return;
     }
+    this.dom.cardsEmpty.style.display = "none";
+    this.dom.cardActions.style.display = "";
+    this.dom.flashcard.style.display = "";
+    this.dom.flashcard.classList.toggle("flipped", card.flipped);
+    this.dom.cardFrontWord.textContent = card.english;
+    this.dom.cardFrontPhonetic.textContent = card.phonetic || "";
+    this.dom.cardBackMeaning.textContent = card.chinese;
+    this.dom.cardBackExample.textContent = card.example || "";
+    this.dom.cardBackExampleCn.textContent = card.exampleChinese || "";
+    this.dom.cardBackTip.textContent = AIManager.makeMemoryTip({ word: card.english, meaning: card.chinese });
+    const prog = LearningState.getCardProgress();
+    const nextText = WordManager.getNextReviewText(this.state.wordHistory[card.english?.toLowerCase()]);
+    this.dom.cardsProgress.textContent = `${prog.done + 1}/${prog.total} · 下次复习：${nextText}`;
     requestAnimationFrame(() => { this.dom.flashcard.style.transition = ""; });
   },
 
   flipCard() {
-    const card = this.state.cards.items[this.state.cards.activeIndex];
+    const card = LearningState.getCurrentCard();
     if (!card || card.remembered !== null) return;
     card.flipped = !card.flipped;
     this.renderCards();
@@ -409,29 +513,30 @@ const App = {
   },
 
   answerCard(remembered) {
-    const card = this.state.cards.items[this.state.cards.activeIndex];
+    const card = LearningState.getCurrentCard();
     if (!card || card.remembered !== null) return;
     if (!card.flipped) { this.flipCard(); return; }
-    card.remembered = remembered;
-    this.state.cards.drawn++;
-    // Record via Ebbinghaus
-    WordManager.recordReview(this.state.wordHistory, card.english, remembered);
+
+    const next = LearningState.nextCard(remembered, this.state.wordHistory);
     if (remembered) {
-      this.state.cards.remembered++;
       this.addExp(EXP_CONFIG.expPerQuizCorrect);
       this.addAffection(AFFECTION_CONFIG.perQuizCorrect);
-      this.setDialogue(this.state.character.name, `嗯。${card.english} 留下来了。下次复习在 ${WordManager.getNextReviewText(this.state.wordHistory[card.english.toLowerCase()])}。`);
     } else {
-      this.state.cards.wrong++;
       this.addAffection(AFFECTION_CONFIG.perWrong);
-      this.setDialogue(this.state.character.name, `没关系。${card.english} 还很淡。过一会儿再看一次。`);
     }
-    const next = this.state.cards.items.findIndex((item) => item.remembered === null);
-    this.state.cards.activeIndex = next >= 0 ? next : this.state.cards.activeIndex;
     this.renderCards();
     this.saveData();
-    if (this.state.cards.drawn >= this.state.cards.items.length) {
-      this.setDialogue(this.state.character.name, `今天的闪卡结束。记住了 ${this.state.cards.remembered} 张。`);
+
+    if (LearningState.cardDone) {
+      const prog = LearningState.getCardProgress();
+      this.setDialogue(this.state.character.name, `闪卡结束。记住了 ${prog.remembered} 张，再抽一轮或者去 Review 巩固。`);
+    } else {
+      const nextCard = LearningState.getCurrentCard();
+      if (nextCard && remembered) {
+        this.setDialogue(this.state.character.name, `「${card.english}」记牢了。下一张——「${nextCard.english}」。`);
+      } else if (nextCard) {
+        this.setDialogue(this.state.character.name, `「${card.english}」再放一放。先看下一张「${nextCard.english}」。`);
+      }
     }
   },
 
@@ -487,8 +592,17 @@ const App = {
     if (!answer) return;
     const correct = checkChineseAnswer(answer, word.chinese);
     this.dom.testInputContainer.style.display = "none";
-    // Record via Ebbinghaus
+    // Record via Ebbinghaus + familiarity
     WordManager.recordReview(this.state.wordHistory, word.english, correct);
+    const key = word.english.toLowerCase();
+    if (this.state.wordHistory[key]) {
+      const r = this.state.wordHistory[key];
+      r.learned = true;
+      r.familiarity = correct
+        ? Math.min(100, (r.familiarity || 0) + 20)
+        : Math.max(0, (r.familiarity || 0) - 5);
+      r.wrongCount = (r.wrongCount || 0) + (correct ? 0 : 1);
+    }
     if (correct) {
       this.state.test.correct++;
       this.addExp(EXP_CONFIG.expPerTestCorrect);
@@ -563,7 +677,8 @@ const App = {
       if (info.exists) {
         const meta = document.createElement("div");
         meta.className = "save-slot-meta";
-        meta.textContent = `${info.character} · Lv.${info.level} · ${info.wordCount} 词 · ${info.savedAt}`;
+        const rangeText = info.range ? ` · 范围 ${info.range}` : "";
+        meta.textContent = `${info.character} · Lv.${info.level} · ${info.wordCount} 词${rangeText} · ${info.savedAt}`;
         infoDiv.appendChild(meta);
       }
 
@@ -596,7 +711,7 @@ const App = {
   },
 
   doSave(index) {
-    SaveManager.save(index, this.state);
+    SaveManager.save(index, this.state, LearningState);
     this.saveData();
     this.renderSaveSlots();
     this.setDialogue("系统", `存档已保存到位置 ${index + 1}。`);
@@ -606,12 +721,16 @@ const App = {
     const data = SaveManager.load(index);
     if (!data) return;
     SaveManager.restoreToState(data, this.state);
+    if (data.learningState) LearningState.deserialize(data.learningState);
     this.ensureCharacter();
     this.updateAllCharacterViews();
     this.renderCharacterSelection(this.dom.characterGrid, this.state.settings.characterId);
     this.syncSettingsControls();
     this.saveData(false);
     this.closeSaveModal();
+    if (this.state.currentPage === "main") {
+      this.switchMode("learn");
+    }
     this.setDialogue("系统", "存档已经读取。回到之前的位置了。");
   },
 
@@ -728,6 +847,7 @@ const App = {
       endpoint: this.dom.modalAiEndpoint.value, model: this.dom.modalAiModel.value };
     AIManager.setConfig(this.state.settings.ai);
     WordManager.setDifficulty(this.state.settings.difficulty);
+    LearningState.init(this.state.settings.difficulty);
     this.applyModalVoiceToState(false);
     this.ensureCharacter();
     this.updateAllCharacterViews();
@@ -772,6 +892,7 @@ const App = {
       const settings = localStorage.getItem("galgameEnglish_settings");
       const profile = localStorage.getItem("galgameEnglish_profile");
       const history = localStorage.getItem("galgameEnglish_wordHistory");
+      const ls = localStorage.getItem("galgameEnglish_learningState");
       if (settings) this.state.settings = { ...this.state.settings, ...JSON.parse(settings) };
       if (profile) this.state.profile = { ...this.state.profile, ...JSON.parse(profile) };
       if (history) this.state.wordHistory = JSON.parse(history);
@@ -780,6 +901,10 @@ const App = {
       this.state.settings.spriteTranslateX = this.state.settings.spriteTranslateX || 0;
       this.state.settings.spriteTranslateY = this.state.settings.spriteTranslateY || 0;
       this.state.settings.spriteScale = this.state.settings.spriteScale || 1;
+      // Restore learning state after WordManager is ready
+      if (ls) {
+        window.__pendingLearningState = JSON.parse(ls);
+      }
       AIManager.setConfig(this.state.settings.ai);
       WordManager.setDifficulty(this.state.settings.difficulty);
     } catch (e) { console.warn("[App] 数据读取失败", e); }
@@ -789,7 +914,8 @@ const App = {
     localStorage.setItem("galgameEnglish_settings", JSON.stringify(this.state.settings));
     localStorage.setItem("galgameEnglish_profile", JSON.stringify(this.state.profile));
     localStorage.setItem("galgameEnglish_wordHistory", JSON.stringify(this.state.wordHistory));
-    SaveManager.autoSave(this.state);
+    localStorage.setItem("galgameEnglish_learningState", JSON.stringify(LearningState.serialize()));
+    SaveManager.autoSave(this.state, LearningState);
     if (showToast) this.setDialogue("系统", "存档已保存。");
   },
 

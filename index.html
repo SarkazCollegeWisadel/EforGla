@@ -81,29 +81,59 @@
         </nav>
 
         <section id="learn-content" class="board-layer mode-content active">
-          <div class="board-title">today's word</div>
-          <div id="learn-display" class="chalk-lesson">
-            <div id="learn-word-area" class="learn-word-area">
-              <span id="learn-word" class="learn-word">—</span>
-              <span id="learn-phonetic" class="learn-phonetic"></span>
-              <span id="learn-meaning" class="learn-meaning"></span>
-              <div id="learn-example-area" class="learn-example-area">
-                <p id="learn-example" class="learn-example"></p>
-                <p id="learn-example-cn" class="learn-example-cn"></p>
+          <div class="board-title">today's words</div>
+          <div class="learn-columns">
+            <!-- Left: Preview & word list -->
+            <div class="learn-col learn-col-preview">
+              <div class="preview-header">
+                <span class="preview-bank" id="learn-bank-label">CET-4</span>
+                <span class="preview-range" id="learn-range-label">1-50</span>
               </div>
-              <div id="learn-memory-tip" class="learn-memory"></div>
+              <div class="preview-stats" id="learn-preview-stats">
+                <span>已学 <b id="preview-learned">0</b>/<span id="preview-total">50</span></span>
+                <span>熟练 <b id="preview-familiarity">0</b>%</span>
+              </div>
+              <div class="preview-word-list" id="learn-word-list"></div>
+              <button id="btn-start-learning" class="start-learn-btn">开始学习</button>
+            </div>
+
+            <!-- Center: Word display -->
+            <div class="learn-col learn-col-word">
+              <div id="learn-before-start" class="learn-before-start">
+                <p>当前词库已准备就绪</p>
+                <p class="learn-before-sub">点"开始学习"进入今日课程</p>
+              </div>
+              <div id="learn-word-area" class="learn-word-area" style="display:none">
+                <span id="learn-word" class="learn-word">—</span>
+                <span id="learn-phonetic" class="learn-phonetic"></span>
+                <span id="learn-meaning" class="learn-meaning"></span>
+                <div id="learn-example-area" class="learn-example-area">
+                  <p id="learn-example" class="learn-example"></p>
+                  <p id="learn-example-cn" class="learn-example-cn"></p>
+                </div>
+                <div id="learn-memory-tip" class="learn-memory"></div>
+                <div id="learn-session-progress" class="learn-session-progress"></div>
+              </div>
+              <div class="learn-nav-bar" id="learn-nav-bar" style="display:none">
+                <button id="btn-learn-prev" class="chalk-choice" title="上一个">←</button>
+                <span id="learn-progress" class="learn-progress">1/50</span>
+                <button id="btn-learn-next" class="chalk-choice" title="下一个">→</button>
+                <button id="btn-learn-sound" class="chalk-choice" title="朗读">♪</button>
+                <button id="btn-mark-learned" class="chalk-choice" title="标记为已学">了解了</button>
+              </div>
+            </div>
+
+            <!-- Right: Character teaching panel -->
+            <div class="learn-col learn-col-char">
+              <div class="learn-char-name" id="learn-char-name">格蕾修</div>
+              <div class="learn-char-bubble" id="learn-char-dialogue">
+                从左边选择今天要学的范围，然后开始吧。
+              </div>
+              <div class="learn-char-extra" id="learn-char-extra">
+                <button id="btn-learn-listen" class="chalk-choice" title="听角色讲解">听她讲</button>
+              </div>
             </div>
           </div>
-          <div class="learn-actions-bar">
-            <button id="btn-learn-prev" class="chalk-choice" title="上一个">←</button>
-            <span id="learn-progress" class="learn-progress">—</span>
-            <button id="btn-learn-next" class="chalk-choice" title="下一个">→</button>
-            <button id="btn-learn-sound" class="chalk-choice" title="朗读单词">♪</button>
-          </div>
-          <form id="learn-form" class="chalk-input learn-inquiry">
-            <input id="word-input" type="text" placeholder="查一个单词..." autocomplete="off">
-            <button id="btn-send" type="submit">查询</button>
-          </form>
         </section>
 
         <section id="cards-content" class="board-layer mode-content">
@@ -124,13 +154,17 @@
                 </div>
               </span>
             </button>
-            <div class="memory-actions">
+            <div class="memory-actions" id="card-actions">
               <button id="btn-card-forgot" class="chalk-choice" type="button">没记住</button>
               <button id="btn-card-remembered" class="chalk-choice" type="button">记住了</button>
             </div>
+            <div id="cards-empty" class="cards-empty" style="display:none">
+              <p>今天的卡片都完成了</p>
+              <p class="cards-empty-sub">记住了 <span id="cards-remembered-total">0</span> 张</p>
+              <button id="btn-cards-restart" class="chalk-choice">再抽一轮</button>
+            </div>
           </div>
-          <div id="cards-progress" class="board-progress">0 / 5 · 下一次复习：今天</div>
-          <div id="card-row" hidden></div>
+          <div id="cards-progress" class="board-progress">0 张 · 0 张待复习</div>
         </section>
 
         <section id="test-content" class="board-layer mode-content">
@@ -265,9 +299,9 @@
   <script src="AIManager.js"></script>
   <script src="SaveManager.js"></script>
   <script src="TTSManager.js"></script>
-  <script src="wordBankLoader.js"></script>
   <script src="aiProvider.js"></script>
   <script src="learning.js"></script>
+  <script src="LearningState.js"></script>
   <script src="aiService.js"></script>
   <script src="api.js"></script>
   <script src="tts.js"></script>

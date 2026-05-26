@@ -85,6 +85,29 @@ const WordManager = {
     return this.normalized[difficulty || this.currentDifficulty] || [];
   },
 
+  /* ── Range support ── */
+
+  getWordCount(difficulty) {
+    const bank = this.normalized[difficulty || this.currentDifficulty];
+    return bank ? bank.length : 0;
+  },
+
+  getWordsInRange(difficulty, start, end) {
+    const bank = this.normalized[difficulty || this.currentDifficulty] || [];
+    const s = Math.max(0, start);
+    const e = Math.min(bank.length, end);
+    return bank.slice(s, e);
+  },
+
+  getWordsByFamiliarity(wordHistory, difficulty, order = "asc") {
+    const bank = this.normalized[difficulty || this.currentDifficulty] || [];
+    return [...bank].sort((a, b) => {
+      const fa = wordHistory[a.english.toLowerCase()]?.familiarity ?? (order === "asc" ? 999 : 0);
+      const fb = wordHistory[b.english.toLowerCase()]?.familiarity ?? (order === "asc" ? 999 : 0);
+      return fa - fb;
+    });
+  },
+
   /* ── Learn session ── */
 
   startLearnSession(difficulty, count = 10) {
@@ -124,6 +147,9 @@ const WordManager = {
 
   getDefaultHistory() {
     return {
+      learned: false,
+      familiarity: 0,
+      wrongCount: 0,
       count: 0,
       correct: 0,
       incorrect: 0,

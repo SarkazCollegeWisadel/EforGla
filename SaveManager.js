@@ -46,6 +46,8 @@ const SaveManager = {
     if (!slot) return { exists: false, label: `存档位 ${index + 1} — 空` };
     const date = new Date(slot.savedAt);
     const dateStr = `${date.getMonth() + 1}/${date.getDate()} ${date.getHours().toString().padStart(2, "0")}:${date.getMinutes().toString().padStart(2, "0")}`;
+    const ls = slot.learningState;
+    const rangeStr = ls ? `${ls.rangeStart + 1}-${ls.rangeEnd}` : "";
     return {
       exists: true,
       label: `存档位 ${index + 1}`,
@@ -53,13 +55,14 @@ const SaveManager = {
       level: slot.level || 1,
       affection: slot.affection || 0,
       wordCount: slot.wordCount || 0,
+      range: rangeStr,
       savedAt: dateStr,
       timestamp: slot.savedAt
     };
   },
 
-  save(index, appState) {
-    const data = this.collectData(appState);
+  save(index, appState, learningState) {
+    const data = this.collectData(appState, learningState);
     if (index >= 0 && index < MAX_SLOTS) {
       this.slots[index] = { ...data, slotIndex: index };
       this.writeToDisk();
@@ -80,8 +83,8 @@ const SaveManager = {
 
   /* ── Auto-save ── */
 
-  autoSave(appState) {
-    const data = this.collectData(appState);
+  autoSave(appState, learningState) {
+    const data = this.collectData(appState, learningState);
     try {
       localStorage.setItem(AUTO_SAVE_KEY, JSON.stringify({ ...data, isAutoSave: true }));
     } catch (e) {
@@ -108,10 +111,10 @@ const SaveManager = {
 
   /* ── Data collection ── */
 
-  collectData(appState) {
+  collectData(appState, learningState) {
     const charName = appState?.character?.name || "";
-    return {
-      version: 1,
+    const data = {
+      version: 2,
       savedAt: new Date().toISOString(),
       characterName: charName,
       characterId: appState?.settings?.characterId || "",
@@ -123,6 +126,10 @@ const SaveManager = {
       profile: JSON.parse(JSON.stringify(appState?.profile || {})),
       wordHistory: JSON.parse(JSON.stringify(appState?.wordHistory || {}))
     };
+    if (learningState && typeof learningState.serialize === "function") {
+      data.learningState = learningState.serialize();
+    }
+    return data;
   },
 
   restoreToState(data, appState) {
@@ -131,6 +138,7 @@ const SaveManager = {
       if (data.settings) appState.settings = { ...appState.settings, ...JSON.parse(JSON.stringify(data.settings)) };
       if (data.profile) appState.profile = { ...appState.profile, ...JSON.parse(JSON.stringify(data.profile)) };
       if (data.wordHistory) appState.wordHistory = JSON.parse(JSON.stringify(data.wordHistory));
+      // LearningState is restored separately via learningState field
       return true;
     } catch {
       return false;
