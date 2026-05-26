@@ -1,6 +1,12 @@
+/* ════════════════════════════════════════════════
+   EforGla V1.6 — Save Manager
+   Multi-slot save/load with conversation history
+   ════════════════════════════════════════════════ */
+
 const SAVE_KEY = "galgameEnglish_saveSlots";
 const AUTO_SAVE_KEY = "galgameEnglish_autoSave";
 const MAX_SLOTS = 6;
+const SAVE_VERSION = 3;
 
 const SaveManager = {
   slots: [],
@@ -11,8 +17,6 @@ const SaveManager = {
     this.initialized = true;
     return this;
   },
-
-  /* ── Persistence ── */
 
   loadFromDisk() {
     try {
@@ -31,8 +35,6 @@ const SaveManager = {
     }
   },
 
-  /* ── Slots ── */
-
   getSlots() {
     return [...this.slots];
   },
@@ -47,7 +49,8 @@ const SaveManager = {
     const date = new Date(slot.savedAt);
     const dateStr = `${date.getMonth() + 1}/${date.getDate()} ${date.getHours().toString().padStart(2, "0")}:${date.getMinutes().toString().padStart(2, "0")}`;
     const ls = slot.learningState;
-    const rangeStr = ls ? `${ls.rangeStart + 1}-${ls.rangeEnd}` : "";
+    const rangeStr = ls ? `${(ls.rangeStart || 0) + 1}-${ls.rangeEnd || 0}` : "";
+    const vocabLabel = ls?.vocabularyId ? (VOCABULARY_BANKS[ls.vocabularyId]?.label || ls.vocabularyId) : "";
     return {
       exists: true,
       label: `存档位 ${index + 1}`,
@@ -56,6 +59,8 @@ const SaveManager = {
       affection: slot.affection || 0,
       wordCount: slot.wordCount || 0,
       range: rangeStr,
+      vocabulary: vocabLabel,
+      conversationCount: slot.conversationCount || 0,
       savedAt: dateStr,
       timestamp: slot.savedAt
     };
@@ -80,8 +85,6 @@ const SaveManager = {
       this.writeToDisk();
     }
   },
-
-  /* ── Auto-save ── */
 
   autoSave(appState, learningState) {
     const data = this.collectData(appState, learningState);
@@ -109,27 +112,25 @@ const SaveManager = {
     }
   },
 
-  /* ── Data collection ── */
-
   collectData(appState, learningState) {
-    const charName = appState?.character?.name || "";
-    const data = {
-      version: 2,
+    const lsSerialized = (learningState && typeof learningState.serialize === "function")
+      ? learningState.serialize() : null;
+
+    return {
+      version: SAVE_VERSION,
       savedAt: new Date().toISOString(),
-      characterName: charName,
+      characterName: appState?.character?.name || "",
       characterId: appState?.settings?.characterId || "",
       level: appState?.profile?.level || 1,
       affection: appState?.profile?.affection || 0,
       exp: appState?.profile?.exp || 0,
       wordCount: Object.keys(appState?.wordHistory || {}).length,
+      conversationCount: lsSerialized?.conversationHistory?.length || 0,
       settings: JSON.parse(JSON.stringify(appState?.settings || {})),
       profile: JSON.parse(JSON.stringify(appState?.profile || {})),
-      wordHistory: JSON.parse(JSON.stringify(appState?.wordHistory || {}))
+      wordHistory: JSON.parse(JSON.stringify(appState?.wordHistory || {})),
+      learningState: lsSerialized
     };
-    if (learningState && typeof learningState.serialize === "function") {
-      data.learningState = learningState.serialize();
-    }
-    return data;
   },
 
   restoreToState(data, appState) {
@@ -138,14 +139,11 @@ const SaveManager = {
       if (data.settings) appState.settings = { ...appState.settings, ...JSON.parse(JSON.stringify(data.settings)) };
       if (data.profile) appState.profile = { ...appState.profile, ...JSON.parse(JSON.stringify(data.profile)) };
       if (data.wordHistory) appState.wordHistory = JSON.parse(JSON.stringify(data.wordHistory));
-      // LearningState is restored separately via learningState field
       return true;
     } catch {
       return false;
     }
   },
-
-  /* ── Export / Import ── */
 
   exportSlot(index) {
     const slot = this.slots[index];
@@ -154,7 +152,7 @@ const SaveManager = {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `galgame_save_${index + 1}_${slot.characterName || "unknown"}.json`;
+    a.download = `eforgla_save_${index + 1}_${slot.characterName || "unknown"}.json`;
     a.click();
     URL.revokeObjectURL(url);
     return true;

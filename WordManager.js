@@ -1,8 +1,7 @@
-const WORD_BANK_INDEX = {
-  easy: { file: "middle_school.json", label: "初中", next: "middle_school" },
-  medium: { file: "cet4.json", label: "CET-4", next: "cet4" },
-  hard: { file: "cet6.json", label: "CET-6", next: "cet6" }
-};
+/* ════════════════════════════════════════════════
+   EforGla V1.6 — Word Manager
+   JSON bank loading + Ebbinghaus spaced repetition
+   ════════════════════════════════════════════════ */
 
 const WORD_BANK_BASE = "assets/data/character/words/";
 
@@ -13,137 +12,156 @@ const WordManager = {
   normalized: {},
   ready: false,
 
-  currentDifficulty: "medium",
-  learnQueue: [],
-  learnIndex: 0,
+  currentVocabulary: "cet4",
 
   async init() {
-    for (const [key, info] of Object.entries(WORD_BANK_INDEX)) {
+    for (const [key, info] of Object.entries(VOCABULARY_BANKS)) {
       await this.loadBank(key, info.file);
     }
     this.ready = true;
     return this;
   },
 
-  async loadBank(difficulty, fileName) {
+  async loadBank(vocabularyId, fileName) {
     try {
       const response = await fetch(WORD_BANK_BASE + fileName, { cache: "no-store" });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const raw = await response.json();
-      this.banks[difficulty] = raw;
-      this.normalized[difficulty] = raw.map((entry) => this.normalizeEntry(entry, difficulty));
+      this.banks[vocabularyId] = raw;
+      this.normalized[vocabularyId] = raw.map((entry) => this.normalizeEntry(entry, vocabularyId));
     } catch (error) {
       console.warn(`[WordManager] 词库 ${fileName} 加载失败，使用内置词库。`, error);
-      this.normalized[difficulty] = this.getFallbackWords(difficulty);
+      const legacyDiff = BANK_TO_DIFFICULTY[vocabularyId] || "medium";
+      this.normalized[vocabularyId] = this.getFallbackWords(legacyDiff);
     }
   },
 
-  normalizeEntry(entry, difficulty) {
+  normalizeEntry(entry, vocabularyId) {
     const translations = entry.translations || [];
     const phrases = entry.phrases || [];
     return {
       english: entry.word || "",
       chinese: translations.map((t) => t.translation).filter(Boolean).join("；") || "",
       phonetic: "",
+      pos: entry.pos || "",
+      synonyms: entry.synonyms || [],
+      antonyms: entry.antonyms || [],
+      root: entry.root || "",
       example: phrases[0]?.phrase || "",
       exampleChinese: phrases[0]?.translation || "",
-      difficulty,
+      vocabularyId,
       phrases,
       translations
     };
   },
 
+  /* ── Vocabulary management ── */
+
+  setVocabulary(vocabularyId) {
+    if (VOCABULARY_BANKS[vocabularyId]) {
+      this.currentVocabulary = vocabularyId;
+    }
+  },
+
+  getVocabulary() {
+    return this.currentVocabulary;
+  },
+
+  getVocabularyLabel(vocabularyId) {
+    const id = vocabularyId || this.currentVocabulary;
+    return VOCABULARY_BANKS[id]?.label || id;
+  },
+
+  getAvailableVocabularies() {
+    return Object.entries(VOCABULARY_BANKS).map(([key, info]) => ({
+      id: key,
+      label: info.label,
+      category: info.category
+    }));
+  },
+
   /* ── Word retrieval ── */
 
-  getWord(difficulty, word) {
-    const bank = this.normalized[difficulty || this.currentDifficulty];
+  getWord(vocabularyId, word) {
+    const bank = this.normalized[vocabularyId || this.currentVocabulary];
     if (!bank) return null;
     const lower = String(word || "").toLowerCase().trim();
     const found = bank.find((entry) => entry.english.toLowerCase() === lower);
-    if (found) return { ...found, difficulty: difficulty || this.currentDifficulty };
+    if (found) return { ...found, vocabularyId: vocabularyId || this.currentVocabulary };
     return this.findInAllBanks(word);
   },
 
   findInAllBanks(word) {
     const lower = String(word || "").toLowerCase().trim();
-    for (const diff of Object.keys(WORD_BANK_INDEX)) {
+    for (const diff of Object.keys(VOCABULARY_BANKS)) {
       const bank = this.normalized[diff] || [];
       const found = bank.find((entry) => entry.english.toLowerCase() === lower);
-      if (found) return { ...found, difficulty: diff };
+      if (found) return { ...found, vocabularyId: diff };
     }
     return null;
   },
 
-  getRandomWords(difficulty, count = 5) {
-    const bank = this.normalized[difficulty || this.currentDifficulty];
-    if (!bank || bank.length === 0) return [];
-    const shuffled = [...bank].sort(() => Math.random() - 0.5);
-    return shuffled.slice(0, Math.min(count, bank.length));
+  getAllWords(vocabularyId) {
+    return this.normalized[vocabularyId || this.currentVocabulary] || [];
   },
 
-  getAllWords(difficulty) {
-    return this.normalized[difficulty || this.currentDifficulty] || [];
-  },
+  /* ── Range ── */
 
-  /* ── Range support ── */
-
-  getWordCount(difficulty) {
-    const bank = this.normalized[difficulty || this.currentDifficulty];
+  getWordCount(vocabularyId) {
+    const bank = this.normalized[vocabularyId || this.currentVocabulary];
     return bank ? bank.length : 0;
   },
 
-  getWordsInRange(difficulty, start, end) {
-    const bank = this.normalized[difficulty || this.currentDifficulty] || [];
+  getWordsInRange(vocabularyId, start, end) {
+    const bank = this.normalized[vocabularyId || this.currentVocabulary] || [];
     const s = Math.max(0, start);
     const e = Math.min(bank.length, end);
     return bank.slice(s, e);
   },
 
-  getWordsByFamiliarity(wordHistory, difficulty, order = "asc") {
-    const bank = this.normalized[difficulty || this.currentDifficulty] || [];
-    return [...bank].sort((a, b) => {
-      const fa = wordHistory[a.english.toLowerCase()]?.familiarity ?? (order === "asc" ? 999 : 0);
-      const fb = wordHistory[b.english.toLowerCase()]?.familiarity ?? (order === "asc" ? 999 : 0);
-      return fa - fb;
-    });
+  getWordsByIds(vocabularyId, wordList) {
+    const bank = this.normalized[vocabularyId || this.currentVocabulary] || [];
+    const set = new Set(wordList.map((w) => w.toLowerCase()));
+    return bank.filter((e) => set.has(e.english.toLowerCase()));
   },
 
-  /* ── Learn session ── */
+  getDifficultyScore(word, vocabularyId) {
+    const text = String(word?.english || word || "");
+    const meaning = String(word?.chinese || "");
+    const phraseCount = Array.isArray(word?.phrases) ? word.phrases.length : 0;
+    const translationCount = Array.isArray(word?.translations) ? word.translations.length : 0;
+    const bankBase = { middle_school: 1, cet4: 2, cet6: 3 }[vocabularyId || word?.vocabularyId || this.currentVocabulary] || 2;
+    let score = bankBase;
 
-  startLearnSession(difficulty, count = 10) {
-    const words = this.getRandomWords(difficulty, count);
-    this.learnQueue = words;
-    this.learnIndex = 0;
-    return this.getCurrentLearnWord();
+    if (text.length >= 7) score += 1;
+    if (text.length >= 11) score += 1;
+    if (meaning.length >= 18 || translationCount >= 3) score += 1;
+    if (phraseCount >= 8) score += 1;
+    if (word?.root || (word?.synonyms?.length || 0) + (word?.antonyms?.length || 0) > 2) score += 1;
+
+    return Math.max(1, Math.min(5, score));
   },
 
-  getCurrentLearnWord() {
-    return this.learnQueue[this.learnIndex] || null;
-  },
+  getWordsForLearnPlan({ vocabularyId, sortMode = "frequency", difficultyRange = { min: 1, max: 5 }, count = 20 } = {}) {
+    const id = vocabularyId || this.currentVocabulary;
+    const min = difficultyRange?.min ?? 1;
+    const max = difficultyRange?.max ?? 5;
+    let words = this.getAllWords(id)
+      .map((word, index) => ({ ...word, bankIndex: index, difficultyScore: this.getDifficultyScore(word, id) }))
+      .filter((word) => word.difficultyScore >= min && word.difficultyScore <= max);
 
-  nextLearnWord() {
-    if (this.learnIndex < this.learnQueue.length - 1) {
-      this.learnIndex++;
+    if (sortMode === "az") {
+      words.sort((a, b) => a.english.localeCompare(b.english, "en", { sensitivity: "base" }));
+    } else if (sortMode === "sequential") {
+      words.sort((a, b) => a.bankIndex - b.bankIndex);
+    } else {
+      words.sort((a, b) => a.bankIndex - b.bankIndex);
     }
-    return this.getCurrentLearnWord();
+
+    return words.slice(0, Math.max(1, Number(count) || 20)).map(({ bankIndex, difficultyScore, ...word }) => word);
   },
 
-  prevLearnWord() {
-    if (this.learnIndex > 0) {
-      this.learnIndex--;
-    }
-    return this.getCurrentLearnWord();
-  },
-
-  getLearnProgress() {
-    return {
-      current: this.learnIndex + 1,
-      total: this.learnQueue.length,
-      word: this.getCurrentLearnWord()
-    };
-  },
-
-  /* ── Spaced repetition (Ebbinghaus) ── */
+  /* ── Spaced repetition ── */
 
   getDefaultHistory() {
     return {
@@ -160,14 +178,10 @@ const WordManager = {
     };
   },
 
-  getReviewIntervals() {
-    return REVIEW_INTERVALS;
-  },
-
-  getDueWords(wordHistory, difficulty) {
+  getDueWords(wordHistory, vocabularyId) {
     const now = Date.now();
     const due = [];
-    const bank = this.normalized[difficulty] || [];
+    const bank = this.normalized[vocabularyId || this.currentVocabulary] || [];
     for (const entry of bank) {
       const key = entry.english.toLowerCase();
       const record = wordHistory[key];
@@ -178,36 +192,15 @@ const WordManager = {
     return due;
   },
 
-  getUpcomingWords(wordHistory, difficulty, days = 1) {
-    const now = Date.now();
-    const upcoming = [];
-    const bank = this.normalized[difficulty] || [];
-    const limit = now + days * 86400000;
-    for (const entry of bank) {
-      const key = entry.english.toLowerCase();
-      const record = wordHistory[key];
-      if (record?.nextReviewAt) {
-        const reviewTime = Date.parse(record.nextReviewAt);
-        if (reviewTime > now && reviewTime <= limit) {
-          upcoming.push(entry);
-        }
-      }
-    }
-    return upcoming;
-  },
-
   getReviewStats(wordHistory) {
     const now = Date.now();
     let dueCount = 0;
-    let upcomingCount = 0;
-    for (const [key, record] of Object.entries(wordHistory)) {
-      if (record.nextReviewAt) {
-        const t = Date.parse(record.nextReviewAt);
-        if (t <= now) dueCount++;
-        else if (t <= now + 86400000) upcomingCount++;
+    for (const record of Object.values(wordHistory)) {
+      if (record.nextReviewAt && Date.parse(record.nextReviewAt) <= now) {
+        dueCount++;
       }
     }
-    return { dueCount, upcomingCount, total: Object.keys(wordHistory).length };
+    return { dueCount, total: Object.keys(wordHistory).length };
   },
 
   recordReview(wordHistory, word, correct) {
@@ -241,27 +234,20 @@ const WordManager = {
     return `${days} 天后`;
   },
 
-  /* ── Difficulty ── */
+  /* ── Legacy compat ── */
 
   setDifficulty(diff) {
-    if (WORD_BANK_INDEX[diff]) {
-      this.currentDifficulty = diff;
-    }
+    const vocabId = DIFFICULTY_TO_BANK[diff];
+    if (vocabId) this.currentVocabulary = vocabId;
   },
 
   getDifficulty() {
-    return this.currentDifficulty;
+    return BANK_TO_DIFFICULTY[this.currentVocabulary] || "medium";
   },
 
   getDifficultyLabel(diff) {
-    return WORD_BANK_INDEX[diff]?.label || diff;
-  },
-
-  getAvailableDifficulties() {
-    return Object.entries(WORD_BANK_INDEX).map(([key, info]) => ({
-      id: key,
-      label: info.label
-    }));
+    const vocabId = DIFFICULTY_TO_BANK[diff] || this.currentVocabulary;
+    return VOCABULARY_BANKS[vocabId]?.label || diff;
   },
 
   /* ── Fallback ── */
@@ -282,6 +268,8 @@ const WordManager = {
         { english: "knowledge", chinese: "知识", phonetic: "/ˈnɑːlɪdʒ/", example: "Knowledge is power.", exampleChinese: "知识就是力量。" }
       ]
     };
-    return fallback[difficulty] || fallback.easy;
+    return (fallback[difficulty] || fallback.easy).map((w) => ({
+      ...w, vocabularyId: DIFFICULTY_TO_BANK[difficulty] || "cet4", phrases: [], translations: []
+    }));
   }
 };

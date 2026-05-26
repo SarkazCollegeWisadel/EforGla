@@ -1,5 +1,12 @@
 node_modules/
 .claude/
 .env
+.env.*
+*.env
 .DS_Store
 .vscode/settings.json
+# Sensitive — never commit real API keys
+*_keys.json
+*_secret.json
+credentials.json
+secrets.json

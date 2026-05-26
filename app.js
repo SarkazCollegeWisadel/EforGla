@@ -1,3 +1,7 @@
+/* ════════════════════════════════════════════════
+   EforGla (语之恋) V1.6 — Application Core
+   ════════════════════════════════════════════════ */
+
 const App = {
   state: {
     currentPage: "welcome",
@@ -6,6 +10,7 @@ const App = {
     character: null,
     settings: {
       characterId: "griseo_card",
+      vocabularyId: "cet4",
       difficulty: "medium",
       aiMode: true,
       customSprite: "",
@@ -13,7 +18,7 @@ const App = {
       spriteTranslateX: 0,
       spriteTranslateY: 0,
       spriteScale: 1,
-      ai: { provider: "mock", apiKey: "", endpoint: "", model: "" },
+      ai: { provider: "deepseek", apiKey: "", endpoint: "", model: "deepseek-v4-flash" },
       voice: { provider: "browser", voiceName: "", rate: 1, pitch: 1.08, volume: 1, autoSpeakDialogue: false, autoSpeakExamples: false }
     },
     profile: { affection: 0, level: 1, exp: 0 },
@@ -24,12 +29,15 @@ const App = {
     currentDialogueText: "",
     cards: { items: [], activeIndex: 0, drawn: 0, remembered: 0, wrong: 0 },
     test: { items: [], index: 0, correct: 0, wrong: 0 },
+    conversation: { currentWord: null, lastUserMessage: "" },
     saveMode: "save"
   },
 
   dom: {},
 
-  /* ── Init ── */
+  /* ════════════════════════════════════════════════
+     INIT
+     ════════════════════════════════════════════════ */
 
   async init() {
     this.cacheDom();
@@ -37,8 +45,7 @@ const App = {
     this.state.characters = await CharacterManager.init();
     await WordManager.init();
     SaveManager.init();
-    LearningState.init(this.state.settings.difficulty);
-    // Restore persisted learning state
+    LearningState.init(this.state.settings.vocabularyId || "cet4");
     if (window.__pendingLearningState) {
       LearningState.deserialize(window.__pendingLearningState);
       delete window.__pendingLearningState;
@@ -46,6 +53,7 @@ const App = {
     this.ensureCharacter();
     this.bindEvents();
     this.renderCharacterSelection(this.dom.characterGrid, this.state.settings.characterId);
+    this.renderVocabSelector("settings-vocab-selector", this.state.settings.vocabularyId);
     this.syncSettingsControls();
     this.updateVoiceOptions();
     this.showPage("welcome");
@@ -57,103 +65,170 @@ const App = {
   cacheDom() {
     const byId = (id) => document.getElementById(id);
     this.dom = {
-      pageWelcome: byId("page-welcome"), pageSettings: byId("page-settings"), pageMain: byId("page-main"),
-      btnStart: byId("btn-start"), characterGrid: byId("character-grid"), spriteUrlInput: byId("sprite-url"),
-      difficultySelect: byId("difficulty-select"), aiModeToggle: byId("ai-mode-toggle"),
-      ttsAutoToggle: byId("tts-auto-toggle"), btnConfirmSettings: byId("btn-confirm-settings"),
+      // Welcome
+      pageWelcome: byId("page-welcome"), btnStart: byId("btn-start"),
+      // Settings page
+      pageSettings: byId("page-settings"), characterGrid: byId("character-grid"),
+      aiModeToggle: byId("ai-mode-toggle"), ttsAutoToggle: byId("tts-auto-toggle"),
+      btnConfirmSettings: byId("btn-confirm-settings"),
+      // Main
+      pageMain: byId("page-main"),
+      // Status
       statusAvatar: byId("status-avatar"), statusCharName: byId("status-char-name"),
       statusCharTitle: byId("status-char-title"), statAffection: byId("stat-affection"),
       statLevel: byId("stat-level"), expBarFill: byId("exp-bar-fill"), expBarText: byId("exp-bar-text"),
-      characterSprite: byId("character-sprite"), charInfoName: byId("char-info-name"),
-      charInfoDetail: byId("char-info-detail"), modeTabs: byId("mode-tabs"),
-      learnContent: byId("learn-content"), cardsContent: byId("cards-content"), testContent: byId("test-content"),
-      // Learn mode — three-column
+      // Character
+      characterSprite: byId("character-sprite"),
+      // Mode tabs
+      modeTabs: byId("mode-tabs"),
+      // Learn
+      learnContent: byId("learn-content"),
       learnBankLabel: byId("learn-bank-label"), learnRangeLabel: byId("learn-range-label"),
+      learnCountLabel: byId("learn-count-label"),
       previewLearned: byId("preview-learned"), previewTotal: byId("preview-total"),
-      previewFamiliarity: byId("preview-familiarity"),
-      learnWordList: byId("learn-word-list"), btnStartLearning: byId("btn-start-learning"),
-      learnBeforeStart: byId("learn-before-start"),
-      learnWord: byId("learn-word"), learnPhonetic: byId("learn-phonetic"), learnMeaning: byId("learn-meaning"),
-      learnExample: byId("learn-example"), learnExampleCn: byId("learn-example-cn"),
-      learnMemoryTip: byId("learn-memory-tip"), learnProgress: byId("learn-progress"),
-      learnWordArea: byId("learn-word-area"), learnSessionProgress: byId("learn-session-progress"),
+      previewFamiliarity: byId("preview-familiarity"), learnWordList: byId("learn-word-list"),
+      btnStartLearning: byId("btn-start-learning"), btnRangeConfig: byId("btn-range-config"),
+      rangeConfigPanel: byId("range-config-panel"),
+      rangePresetBtns: byId("range-preset-btns"), rangeCustomRow: byId("range-custom-row"),
+      rangeCustomStart: byId("range-custom-start"), rangeCustomEnd: byId("range-custom-end"),
+      learnSortStep: byId("learn-sort-step"), sortModeBtns: byId("sort-mode-btns"),
+      btnConfirmSort: byId("btn-confirm-sort"), learnSortThinking: byId("learn-sort-thinking"),
+      learnRangeStep: byId("learn-range-step"), difficultyRangeBtns: byId("difficulty-range-btns"),
+      countPresetBtns: byId("count-preset-btns"), countCustomRow: byId("count-custom-row"),
+      countCustomValue: byId("count-custom-value"),
+      filterPresetBtns: byId("filter-preset-btns"),
+      btnApplyRange: byId("btn-apply-range"),
+      lessonPlan: byId("lesson-plan"),
+      learnBeforeStart: byId("learn-before-start"), learnWordArea: byId("learn-word-area"),
+      learnWord: byId("learn-word"), learnPhonetic: byId("learn-phonetic"),
+      learnMeaning: byId("learn-meaning"), learnPos: byId("learn-pos"),
+      learnSynonyms: byId("learn-synonyms"), learnAntonyms: byId("learn-antonyms"),
+      learnRoot: byId("learn-root"), learnExample: byId("learn-example"),
+      learnExampleCn: byId("learn-example-cn"), learnCollocations: byId("learn-collocations"),
+      learnSessionProgress: byId("learn-session-progress"),
+      learnNavBar: byId("learn-nav-bar"), learnProgress: byId("learn-progress"),
       btnLearnPrev: byId("btn-learn-prev"), btnLearnNext: byId("btn-learn-next"),
       btnLearnSound: byId("btn-learn-sound"), btnMarkLearned: byId("btn-mark-learned"),
-      learnNavBar: byId("learn-nav-bar"),
       learnCharName: byId("learn-char-name"), learnCharDialogue: byId("learn-char-dialogue"),
-      btnLearnListen: byId("btn-learn-listen"),
-      // Flash cards
-      flashcard: byId("flashcard"), cardFrontWord: byId("card-front-word"), cardFrontPhonetic: byId("card-front-phonetic"),
-      cardBackMeaning: byId("card-back-meaning"), cardBackExample: byId("card-back-example"),
-      cardBackExampleCn: byId("card-back-example-cn"), cardBackTip: byId("card-back-tip"),
-      cardsProgress: byId("cards-progress"), cardActions: byId("card-actions"),
-      btnCardForgot: byId("btn-card-forgot"), btnCardRemembered: byId("btn-card-remembered"),
+      learnHintProgress: byId("learn-hint-progress"),
+      btnLearnHint: byId("btn-learn-hint"), btnLearnListen: byId("btn-learn-listen"),
+      // Cards
+      cardsContent: byId("cards-content"),
+      flashcard: byId("flashcard"), cardFrontWord: byId("card-front-word"),
+      cardFrontPhonetic: byId("card-front-phonetic"), cardBackMeaning: byId("card-back-meaning"),
+      cardBackExample: byId("card-back-example"), cardBackExampleCn: byId("card-back-example-cn"),
+      cardBackTip: byId("card-back-tip"), cardsProgress: byId("cards-progress"),
+      cardActions: byId("card-actions"), btnCardForgot: byId("btn-card-forgot"),
+      btnCardRemembered: byId("btn-card-remembered"),
       cardsEmpty: byId("cards-empty"), cardsRememberedTotal: byId("cards-remembered-total"),
       btnCardsRestart: byId("btn-cards-restart"),
+      cardHintArea: byId("card-hint-area"), btnCardHint: byId("btn-card-hint"),
+      cardHintText: byId("card-hint-text"),
+      // Conversation
+      conversationContent: byId("conversation-content"),
+      convWord: byId("conv-word"), conversationLog: byId("conversation-log"),
+      conversationInput: byId("conversation-input"),
+      btnConversationSend: byId("btn-conversation-send"),
+      btnConvPickWord: byId("btn-conv-pick-word"),
+      btnConvSuggest: byId("btn-conv-suggest"), btnConvCorrect: byId("btn-conv-correct"),
       // Review
-      testProgress: byId("test-progress"), testWordDisplay: byId("test-word-display"), testPhonetic: byId("test-phonetic"),
-      testInput: byId("test-input"), btnTestSubmit: byId("btn-test-submit"),
+      reviewContent: byId("review-content"),
+      testProgress: byId("test-progress"), testWordDisplay: byId("test-word-display"),
+      testPhonetic: byId("test-phonetic"), testInput: byId("test-input"),
+      btnTestSubmit: byId("btn-test-submit"),
       testInputContainer: byId("test-input-container"), testResult: byId("test-result"),
+      reviewStatsBar: byId("review-stats-bar"),
       // Dialogue
       dialogueName: byId("dialogue-name"), dialogueText: byId("dialogue-text"),
       dialogueContinue: byId("dialogue-continue"), dialogueVoice: byId("dialogue-voice"),
       // Toolbar
-      btnCharSwitch: byId("btn-char-switch"), btnSave: byId("btn-save"), btnLoad: byId("btn-load"),
-      btnToolbarSettings: byId("btn-toolbar-settings"),
+      btnCharSwitch: byId("btn-char-switch"), btnSave: byId("btn-save"),
+      btnLoad: byId("btn-load"), btnToolbarSettings: byId("btn-toolbar-settings"),
       // Settings modal
       settingsModal: byId("settings-modal"), modalCharacterGrid: byId("modal-character-grid"),
-      modalDifficulty: byId("modal-difficulty"), modalSpriteUrl: byId("modal-sprite-url"),
-      modalVoiceSelect: byId("modal-voice-select"), modalVoiceRate: byId("modal-voice-rate"),
-      modalVoicePitch: byId("modal-voice-pitch"), modalAutoSpeak: byId("modal-auto-speak"),
-      btnVoiceTest: byId("btn-voice-test"), btnModalSave: byId("btn-modal-save"), btnModalClose: byId("btn-modal-close"),
-      spriteSizeSlider: byId("modal-sprite-size"), spriteSizeValue: byId("modal-sprite-size-value"),
-      spriteSizePresets: byId("modal-sprite-size-presets"),
+      modalVocabSelector: byId("modal-vocab-selector"),
       modalAiProvider: byId("modal-ai-provider"), modalAiKey: byId("modal-ai-key"),
       modalAiEndpoint: byId("modal-ai-endpoint"), modalAiModel: byId("modal-ai-model"),
+      modalVoiceSelect: byId("modal-voice-select"), modalVoiceRate: byId("modal-voice-rate"),
+      modalVoicePitch: byId("modal-voice-pitch"), modalAutoSpeak: byId("modal-auto-speak"),
+      btnVoiceTest: byId("btn-voice-test"), btnModalSave: byId("btn-modal-save"),
+      btnModalClose: byId("btn-modal-close"),
+      spriteSizeSlider: byId("modal-sprite-size"), spriteSizeValue: byId("modal-sprite-size-value"),
+      spriteSizePresets: byId("modal-sprite-size-presets"),
       // Save modal
       saveModal: byId("save-modal"), saveModalTitle: byId("save-modal-title"),
       saveSlotList: byId("save-slot-list"), btnSaveClose: byId("btn-save-close"),
-      btnSaveExport: byId("btn-save-export"), btnSaveCancel: byId("btn-save-cancel")
+      btnSaveCancel: byId("btn-save-cancel"), btnSaveExport: byId("btn-save-export")
     };
   },
 
-  /* ── Events ── */
+  /* ════════════════════════════════════════════════
+     EVENTS
+     ════════════════════════════════════════════════ */
 
   bindEvents() {
+    // Welcome
     this.dom.btnStart.addEventListener("click", () => this.showPage("settings"));
     this.dom.btnConfirmSettings.addEventListener("click", () => this.saveSettingsFromPage());
     this.dom.characterGrid.addEventListener("click", (e) => this.handleCharacterGridClick(e, false));
     this.dom.modalCharacterGrid.addEventListener("click", (e) => this.handleCharacterGridClick(e, true));
+
+    // Mode tabs
     this.dom.modeTabs.addEventListener("click", (e) => {
       const btn = e.target.closest("[data-mode]");
       if (btn) this.switchMode(btn.dataset.mode);
     });
-    /* ── Learn events ── */
+
+    // Learn
     this.dom.btnStartLearning.addEventListener("click", () => this.beginLearnSession());
     this.dom.btnLearnPrev.addEventListener("click", () => this.navigateLearn(-1));
     this.dom.btnLearnNext.addEventListener("click", () => this.navigateLearn(1));
     this.dom.btnLearnSound.addEventListener("click", () => this.speakLearnWord());
     this.dom.btnMarkLearned.addEventListener("click", () => this.markCurrentWord());
-    this.dom.btnLearnListen.addEventListener("click", () => this.readLearnDialogue());
-    /* ── Card events ── */
+    if (this.dom.btnLearnListen) this.dom.btnLearnListen.addEventListener("click", () => this.readLearnDialogue());
+    if (this.dom.btnLearnHint) this.dom.btnLearnHint.addEventListener("click", () => this.advanceLearnHint());
+    this.dom.btnRangeConfig.addEventListener("click", () => this.toggleRangeConfig());
+    if (this.dom.btnConfirmSort) this.dom.btnConfirmSort.addEventListener("click", () => this.confirmLearnSortMode());
+    this.dom.btnApplyRange.addEventListener("click", () => this.applyRangeConfig());
+    if (this.dom.characterSprite) this.dom.characterSprite.addEventListener("click", () => this.advanceLearnHint());
+
+    // Cards
     this.dom.flashcard.addEventListener("click", () => this.flipCard());
     this.dom.btnCardForgot.addEventListener("click", () => this.answerCard(false));
     this.dom.btnCardRemembered.addEventListener("click", () => this.answerCard(true));
     this.dom.btnCardsRestart.addEventListener("click", () => this.startCards());
-    /* ── Review events ── */
+    this.dom.btnCardHint.addEventListener("click", () => this.advanceCardHint());
+
+    // Conversation
+    this.dom.btnConversationSend.addEventListener("click", () => this.sendConversationMessage());
+    this.dom.conversationInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") this.sendConversationMessage();
+    });
+    this.dom.btnConvPickWord.addEventListener("click", () => this.pickConversationWord());
+    this.dom.btnConvSuggest.addEventListener("click", () => this.requestConversationSuggest());
+    this.dom.btnConvCorrect.addEventListener("click", () => this.requestSentenceCheck());
+
+    // Review
     this.dom.btnTestSubmit.addEventListener("click", () => this.checkTestAnswer());
-    this.dom.testInput.addEventListener("keydown", (e) => { if (e.key === "Enter") this.checkTestAnswer(); });
-    /* ── Dialogue ── */
+    this.dom.testInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") this.checkTestAnswer();
+    });
+
+    // Dialogue
     this.dom.dialogueText.addEventListener("click", () => this.skipTypewriter());
     this.dom.dialogueVoice.addEventListener("click", () => this.speakCurrentDialogue());
-    /* ── Toolbar ── */
+
+    // Toolbar
     this.dom.btnCharSwitch.addEventListener("click", () => this.openSettingsModal());
     this.dom.btnSave.addEventListener("click", () => this.openSaveModal("save"));
     this.dom.btnLoad.addEventListener("click", () => this.openSaveModal("load"));
     this.dom.btnToolbarSettings.addEventListener("click", () => this.openSettingsModal());
-    /* ── Settings modal ── */
+
+    // Settings modal
     this.dom.btnModalClose.addEventListener("click", () => this.closeSettingsModal());
-    this.dom.settingsModal.addEventListener("click", (e) => { if (e.target === this.dom.settingsModal) this.closeSettingsModal(); });
+    this.dom.settingsModal.addEventListener("click", (e) => {
+      if (e.target === this.dom.settingsModal) this.closeSettingsModal();
+    });
     this.dom.btnVoiceTest.addEventListener("click", () => {
       this.applyModalVoiceToState(false);
       TTSManager.speak("这是当前的语音试听。今天的颜色很亮。", this.state.settings.voice);
@@ -161,20 +236,28 @@ const App = {
     this.dom.btnModalSave.addEventListener("click", () => this.saveModalSettings());
     this.dom.spriteSizeSlider.addEventListener("input", () => this.handleSpriteSizeChange());
     this.dom.spriteSizePresets.addEventListener("click", (e) => this.handleSpritePresetClick(e));
-    /* ── Save modal ── */
+
+    // Save modal
     this.dom.btnSaveClose.addEventListener("click", () => this.closeSaveModal());
     this.dom.btnSaveCancel.addEventListener("click", () => this.closeSaveModal());
-    this.dom.btnSaveExport.addEventListener("click", () => this.exportSaveSlot());
+
+    // Keyboard
     document.addEventListener("keydown", (e) => {
       if (e.key === "Escape") { this.closeSettingsModal(); this.closeSaveModal(); }
     });
   },
 
-  /* ── Page nav ── */
+  /* ════════════════════════════════════════════════
+     PAGE NAVIGATION
+     ════════════════════════════════════════════════ */
 
   showPage(pageName) {
     document.querySelectorAll(".page").forEach((p) => p.classList.remove("active"));
-    const page = { welcome: this.dom.pageWelcome, settings: this.dom.pageSettings, main: this.dom.pageMain }[pageName];
+    const page = {
+      welcome: this.dom.pageWelcome,
+      settings: this.dom.pageSettings,
+      main: this.dom.pageMain
+    }[pageName];
     if (!page) return;
     page.classList.add("active");
     this.state.currentPage = pageName;
@@ -184,12 +267,14 @@ const App = {
   onEnterMain() {
     this.ensureCharacter();
     this.updateAllCharacterViews();
-    LearningState.init(this.state.settings.difficulty);
+    LearningState.init(this.state.settings.vocabularyId || "cet4");
     this.switchMode("learn");
     this.setDialogue(this.state.character.name, this.state.character.greeting);
   },
 
-  /* ── Character ── */
+  /* ════════════════════════════════════════════════
+     CHARACTER
+     ════════════════════════════════════════════════ */
 
   ensureCharacter() {
     this.state.character = CharacterManager.get(this.state.settings.characterId);
@@ -227,30 +312,64 @@ const App = {
     if (!inModal) this.state.settings.characterId = card.dataset.id;
   },
 
-  /* ── Settings page ── */
+  /* ════════════════════════════════════════════════
+     VOCABULARY SELECTOR
+     ════════════════════════════════════════════════ */
+
+  renderVocabSelector(containerId, selectedId) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    container.innerHTML = "";
+    const banks = WordManager.getAvailableVocabularies();
+    banks.forEach((bank) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = `vocab-option${bank.id === selectedId ? " selected" : ""}`;
+      btn.dataset.vocabId = bank.id;
+      btn.innerHTML = `<span class="vocab-option-name">${bank.label}</span><span class="vocab-option-category">${bank.category}</span>`;
+      btn.addEventListener("click", () => {
+        container.querySelectorAll(".vocab-option").forEach((b) => b.classList.remove("selected"));
+        btn.classList.add("selected");
+      });
+      container.appendChild(btn);
+    });
+  },
+
+  getSelectedVocabId(containerId) {
+    const container = document.getElementById(containerId);
+    if (!container) return "cet4";
+    const selected = container.querySelector(".vocab-option.selected");
+    return selected?.dataset?.vocabId || "cet4";
+  },
+
+  /* ════════════════════════════════════════════════
+     SETTINGS PAGE
+     ════════════════════════════════════════════════ */
 
   saveSettingsFromPage() {
     const selected = this.dom.characterGrid.querySelector(".character-card.selected");
     if (selected) this.state.settings.characterId = selected.dataset.id;
-    this.state.settings.difficulty = this.dom.difficultySelect.value;
-    this.state.settings.customSprite = this.dom.spriteUrlInput.value.trim();
+    const vocabId = this.getSelectedVocabId("settings-vocab-selector");
+    this.state.settings.vocabularyId = vocabId;
+    this.state.settings.difficulty = BANK_TO_DIFFICULTY[vocabId] || "medium";
     this.state.settings.aiMode = this.dom.aiModeToggle.checked;
     this.state.settings.voice.autoSpeakDialogue = this.dom.ttsAutoToggle.checked;
-    WordManager.setDifficulty(this.state.settings.difficulty);
-    LearningState.init(this.state.settings.difficulty);
+
+    WordManager.setVocabulary(vocabId);
+    LearningState.setVocabulary(vocabId);
     this.ensureCharacter();
     this.saveData();
     this.showPage("main");
   },
 
   syncSettingsControls() {
-    this.dom.difficultySelect.value = this.state.settings.difficulty;
-    this.dom.spriteUrlInput.value = this.state.settings.customSprite;
     this.dom.aiModeToggle.checked = this.state.settings.aiMode;
     this.dom.ttsAutoToggle.checked = this.state.settings.voice.autoSpeakDialogue;
   },
 
-  /* ── Update views ── */
+  /* ════════════════════════════════════════════════
+     VIEW UPDATES
+     ════════════════════════════════════════════════ */
 
   updateAllCharacterViews() {
     this.updateTheme();
@@ -259,7 +378,7 @@ const App = {
   },
 
   updateTheme() {
-    const t = this.state.character.theme || {};
+    const t = this.state.character?.theme || {};
     document.documentElement.style.setProperty("--blue", t.primary || "#88bff2");
     document.documentElement.style.setProperty("--violet", t.secondary || "#9188d8");
     document.documentElement.style.setProperty("--gold", t.accent || "#e7cf89");
@@ -267,61 +386,264 @@ const App = {
 
   updateStatusBar() {
     const c = this.state.character;
+    if (!c) return;
     this.dom.statusAvatar.textContent = c.avatar || c.name.slice(0, 1);
     this.dom.statusCharName.textContent = c.name;
     this.dom.statusCharTitle.textContent = c.title;
-    this.dom.charInfoName.textContent = c.name;
     this.dom.statAffection.textContent = this.state.profile.affection;
     this.dom.statLevel.textContent = this.state.profile.level;
     const expToNext = this.getExpToNextLevel();
     this.dom.expBarText.textContent = `${this.state.profile.exp}/${expToNext}`;
     this.dom.expBarFill.style.width = `${Math.min(100, (this.state.profile.exp / expToNext) * 100)}%`;
-    this.dom.charInfoDetail.textContent = `${c.title} · 好感 ${this.state.profile.affection} · Lv.${this.state.profile.level}`;
   },
 
   updateSprite() {
-    const sprite = this.state.settings.customSprite || this.state.character.sprite || "assets/0.png";
+    const sprite = this.state.settings.customSprite || this.state.character?.sprite || "assets/0.png";
     this.dom.characterSprite.src = sprite;
     const s = this.state.settings;
     this.dom.characterSprite.style.setProperty("--sprite-h", `${s.spriteSize}vh`);
     this.dom.characterSprite.style.transform = `translateX(calc(-50% + ${s.spriteTranslateX || 0}px)) translateY(${s.spriteTranslateY || 0}px) scale(${s.spriteScale || 1})`;
-    this.dom.characterSprite.onerror = () => { this.dom.characterSprite.src = "assets/0.png"; this.dom.characterSprite.onerror = null; };
-  },
-
-  /* ── Mode switch ── */
-
-  switchMode(mode) {
-    this.state.currentMode = mode;
-    this.dom.modeTabs.querySelectorAll(".mode-tab").forEach((b) => b.classList.toggle("active", b.dataset.mode === mode));
-    this.dom.learnContent.classList.toggle("active", mode === "learn");
-    this.dom.cardsContent.classList.toggle("active", mode === "cards");
-    this.dom.testContent.classList.toggle("active", mode === "test");
-    if (mode === "learn") this.startLearn();
-    if (mode === "cards") this.startCards();
-    if (mode === "test") this.startReview();
+    this.dom.characterSprite.onerror = () => {
+      this.dom.characterSprite.src = "assets/0.png";
+      this.dom.characterSprite.onerror = null;
+    };
   },
 
   /* ════════════════════════════════════════════════
-     LEARN MODE — Preview → Session → Character teaching
+     MODE SWITCH
+     ════════════════════════════════════════════════ */
+
+  switchMode(mode) {
+    this.state.currentMode = mode;
+    this.dom.modeTabs.querySelectorAll(".mode-tab").forEach((b) => {
+      b.classList.toggle("active", b.dataset.mode === mode);
+    });
+    this.dom.learnContent.classList.toggle("active", mode === "learn");
+    this.dom.cardsContent.classList.toggle("active", mode === "cards");
+    this.dom.conversationContent.classList.toggle("active", mode === "conversation");
+    this.dom.reviewContent.classList.toggle("active", mode === "review");
+
+    if (mode === "learn") this.startLearn();
+    if (mode === "cards") this.startCards();
+    if (mode === "conversation") this.startConversation();
+    if (mode === "review") this.startReview();
+  },
+
+  /* ════════════════════════════════════════════════
+     LEARN MODE
      ════════════════════════════════════════════════ */
 
   startLearn() {
+    this.renderRangeBar();
+    this.renderSortModePresets();
+    this.renderCountPresets();
+    this.renderDifficultyRangePresets();
+    this.renderLearnSetupStage();
     this.renderLearnPreview();
-    this.updateLearnCharDialogue("从左边看今天要学的范围。准备好了就点「开始学习」。");
+    this.updateLearnCharDialogue("调整好范围，点「开始学习」吧。");
   },
 
-  renderLearnPreview() {
-    const diffLabel = WordManager.getDifficultyLabel(LearningState.difficulty);
-    this.dom.learnBankLabel.textContent = diffLabel;
-    this.dom.learnRangeLabel.textContent = `${LearningState.rangeStart + 1}-${Math.min(LearningState.rangeEnd, WordManager.getWordCount(LearningState.difficulty))}`;
+  /* ── Range config ── */
 
-    // Stats
+  renderRangeBar() {
+    this.dom.learnBankLabel.textContent = LearningState.getVocabularyLabel();
+    this.dom.learnRangeLabel.textContent = LearningState.getRangeLabel();
+    this.dom.learnCountLabel.textContent = `${LearningState.learnCount} 词`;
+  },
+
+  renderSortModePresets() {
+    const container = this.dom.sortModeBtns;
+    if (!container) return;
+    container.innerHTML = "";
+    SORT_MODE_PRESETS.forEach((preset) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = `range-preset-btn${LearningState.sortMode === preset.id ? " active" : ""}`;
+      btn.dataset.sort = preset.id;
+      btn.textContent = preset.label;
+      btn.addEventListener("click", () => {
+        container.querySelectorAll(".range-preset-btn").forEach((b) => b.classList.remove("active"));
+        btn.classList.add("active");
+      });
+      container.appendChild(btn);
+    });
+  },
+
+  renderDifficultyRangePresets() {
+    const container = this.dom.difficultyRangeBtns;
+    if (!container) return;
+    container.innerHTML = "";
+    DIFFICULTY_RANGE_PRESETS.forEach((preset) => {
+      const active = LearningState.difficultyRange?.id === preset.id || (
+        LearningState.difficultyRange?.min === preset.min && LearningState.difficultyRange?.max === preset.max
+      );
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = `range-preset-btn${active ? " active" : ""}`;
+      btn.dataset.range = preset.id;
+      btn.dataset.min = preset.min;
+      btn.dataset.max = preset.max;
+      btn.textContent = preset.label;
+      btn.addEventListener("click", () => {
+        container.querySelectorAll(".range-preset-btn").forEach((b) => b.classList.remove("active"));
+        btn.classList.add("active");
+      });
+      container.appendChild(btn);
+    });
+    if (!container.querySelector(".active")) {
+      container.querySelector(".range-preset-btn")?.classList.add("active");
+    }
+  },
+
+  renderLearnSetupStage() {
+    const stage = LearningState.setupStage || "sort";
+    if (this.dom.learnSortStep) this.dom.learnSortStep.style.display = stage === "sort" ? "" : "none";
+    if (this.dom.learnRangeStep) this.dom.learnRangeStep.style.display = stage === "range" ? "" : "none";
+    if (this.dom.learnSortThinking) this.dom.learnSortThinking.style.display = "none";
+  },
+
+  renderRangePresets() {
+    const container = this.dom.rangePresetBtns;
+    if (!container) return;
+    container.innerHTML = "";
+    RANGE_PRESETS.forEach((preset) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = `range-preset-btn${LearningState.rangePreset === preset.id ? " active" : ""}`;
+      btn.dataset.preset = preset.id;
+      btn.textContent = preset.label;
+      btn.addEventListener("click", () => {
+        container.querySelectorAll(".range-preset-btn").forEach((b) => b.classList.remove("active"));
+        btn.classList.add("active");
+        this.dom.rangeCustomRow.style.display = preset.id === "custom" ? "" : "none";
+        if (preset.id === "custom") {
+          this.dom.rangeCustomStart.value = LearningState.rangeStart + 1;
+          this.dom.rangeCustomEnd.value = LearningState.rangeEnd;
+        }
+      });
+      container.appendChild(btn);
+    });
+    this.dom.rangeCustomRow.style.display = LearningState.rangePreset === "custom" ? "" : "none";
+    if (LearningState.rangePreset === "custom") {
+      this.dom.rangeCustomStart.value = LearningState.rangeStart + 1;
+      this.dom.rangeCustomEnd.value = LearningState.rangeEnd;
+    }
+  },
+
+  renderCountPresets() {
+    const container = this.dom.countPresetBtns;
+    if (!container) return;
+    container.innerHTML = "";
+    COUNT_PRESETS.forEach((preset) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = `range-preset-btn${LearningState.countPreset === preset.id ? " active" : ""}`;
+      btn.dataset.preset = preset.id;
+      btn.textContent = preset.label;
+      btn.addEventListener("click", () => {
+        container.querySelectorAll(".range-preset-btn").forEach((b) => b.classList.remove("active"));
+        btn.classList.add("active");
+        this.dom.countCustomRow.style.display = preset.id === "custom" ? "" : "none";
+        if (preset.id === "custom") {
+          this.dom.countCustomValue.value = LearningState.learnCount;
+        }
+      });
+      container.appendChild(btn);
+    });
+    this.dom.countCustomRow.style.display = LearningState.countPreset === "custom" ? "" : "none";
+    if (LearningState.countPreset === "custom") {
+      this.dom.countCustomValue.value = LearningState.learnCount;
+    }
+  },
+
+  renderFilterPresets() {
+    const container = this.dom.filterPresetBtns;
+    if (!container) return;
+    container.innerHTML = "";
+    FILTER_PRESETS.forEach((filter) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = `range-preset-btn${LearningState.filterMode === filter.id ? " active" : ""}`;
+      btn.dataset.filter = filter.id;
+      btn.textContent = filter.label;
+      btn.addEventListener("click", () => {
+        container.querySelectorAll(".range-preset-btn").forEach((b) => b.classList.remove("active"));
+        btn.classList.add("active");
+      });
+      container.appendChild(btn);
+    });
+  },
+
+  toggleRangeConfig() {
+    const panel = this.dom.rangeConfigPanel;
+    const shown = panel.style.display !== "none";
+    panel.style.display = shown ? "none" : "";
+    if (!shown) {
+      LearningState.setupStage = LearningState.setupStage === "session" ? "range" : (LearningState.setupStage || "sort");
+      this.renderSortModePresets();
+      this.renderCountPresets();
+      this.renderDifficultyRangePresets();
+      this.renderLearnSetupStage();
+    }
+  },
+
+  confirmLearnSortMode() {
+    const active = this.dom.sortModeBtns?.querySelector(".range-preset-btn.active");
+    LearningState.setSortMode(active?.dataset?.sort || "frequency");
+    if (this.dom.learnSortStep) this.dom.learnSortStep.style.display = "none";
+    if (this.dom.learnSortThinking) this.dom.learnSortThinking.style.display = "";
+    this.updateLearnCharDialogue("我先把词按你选的方式排好。");
+    window.setTimeout(() => {
+      LearningState.setupStage = "range";
+      this.renderLearnSetupStage();
+      this.renderRangeBar();
+    }, 260);
+  },
+
+  applyRangeConfig() {
+    // Read count preset
+    const countActive = this.dom.countPresetBtns.querySelector(".range-preset-btn.active");
+    const countPresetId = countActive?.dataset?.preset || "20";
+    const customCount = parseInt(this.dom.countCustomValue.value) || 20;
+    LearningState.setCountPreset(countPresetId, customCount);
+
+    const difficultyActive = this.dom.difficultyRangeBtns?.querySelector(".range-preset-btn.active");
+    LearningState.setDifficultyRange({
+      id: difficultyActive?.dataset?.range || "1-2",
+      min: Number(difficultyActive?.dataset?.min || 1),
+      max: Number(difficultyActive?.dataset?.max || 2)
+    });
+
+    // Generate lesson plan
+    this.generateLessonPlan();
+
+    // Update UI
+    this.renderRangeBar();
+    this.renderLearnPreview();
+    this.dom.rangeConfigPanel.style.display = "none";
+
+    this.setDialogue(this.state.character.name, "大纲已更新。看看今天学什么？");
+  },
+
+  async generateLessonPlan() {
+    const plan = LearningState.generateLessonPlan(this.state.wordHistory);
+    const aiPlan = await AIManager.generateLessonPlan({
+      words: LearningState.rangeWords,
+      vocabularyLabel: LearningState.getVocabularyLabel(),
+      character: this.state.character
+    });
+    this.dom.lessonPlan.style.display = "";
+    this.dom.lessonPlan.textContent = aiPlan;
+  },
+
+  /* ── Preview ── */
+
+  renderLearnPreview() {
     const stats = LearningState.getSessionStats(this.state.wordHistory);
     this.dom.previewLearned.textContent = stats.learned;
     this.dom.previewTotal.textContent = stats.total;
     this.dom.previewFamiliarity.textContent = stats.avgFamiliarity;
 
-    // Word list
     this.dom.learnWordList.innerHTML = "";
     LearningState.rangeWords.forEach((word, i) => {
       const state = LearningState.getWordState(this.state.wordHistory, word);
@@ -338,18 +660,22 @@ const App = {
       this.dom.learnWordList.appendChild(item);
     });
 
-    // Show pre-start state
     this.dom.learnBeforeStart.style.display = LearningState.isInSession() ? "none" : "";
     if (this.dom.learnWordArea) this.dom.learnWordArea.style.display = LearningState.isInSession() ? "" : "none";
     if (this.dom.learnNavBar) this.dom.learnNavBar.style.display = LearningState.isInSession() ? "" : "none";
+    if (this.dom.btnLearnHint) this.dom.btnLearnHint.style.display = LearningState.isInSession() ? "" : "none";
+    if (this.dom.learnHintProgress) this.dom.learnHintProgress.style.display = LearningState.isInSession() ? "" : "none";
 
     if (LearningState.isInSession()) this.renderLearnWord();
   },
+
+  /* ── Session ── */
 
   beginLearnSession() {
     LearningState.enterLearn();
     this.renderLearnWord();
     this.renderLearnPreview();
+    this.updateHintProgress();
     const word = LearningState.getCurrentWord();
     if (word) {
       this.setLearnCharacterDialogue(word);
@@ -362,22 +688,42 @@ const App = {
       this.dom.learnWord.textContent = "—";
       this.dom.learnPhonetic.textContent = "";
       this.dom.learnMeaning.textContent = "";
+      this.dom.learnPos.textContent = "";
+      this.dom.learnSynonyms.textContent = "";
+      this.dom.learnAntonyms.textContent = "";
+      this.dom.learnRoot.textContent = "";
       this.dom.learnExample.textContent = "";
       this.dom.learnExampleCn.textContent = "";
-      this.dom.learnMemoryTip.textContent = "";
+      this.dom.learnCollocations.textContent = "";
       this.dom.learnProgress.textContent = "—";
       return;
     }
+
     this.dom.learnWord.textContent = word.english;
     this.dom.learnPhonetic.textContent = word.phonetic || "";
     this.dom.learnMeaning.textContent = word.chinese;
+
+    // Rich details
+    this.dom.learnPos.textContent = word.pos || "";
+    const syns = word.synonyms || [];
+    this.dom.learnSynonyms.textContent = syns.length > 0 ? `近义：${syns.slice(0, 3).join("、")}` : "";
+    const ants = word.antonyms || [];
+    this.dom.learnAntonyms.textContent = ants.length > 0 ? `反义：${ants.slice(0, 3).join("、")}` : "";
+    this.dom.learnRoot.textContent = word.root ? `词根：${word.root}` : "";
+
     this.dom.learnExample.textContent = word.example || "";
     this.dom.learnExampleCn.textContent = word.exampleChinese || "";
-    this.dom.learnMemoryTip.textContent = AIManager.makeMemoryTip({ word: word.english, meaning: word.chinese });
+
+    const collocations = word.collocations || "";
+    if (!collocations && word.phrases?.length > 0) {
+      this.dom.learnCollocations.textContent = word.phrases.slice(0, 3).map((p) => p.phrase).join(" | ");
+    } else {
+      this.dom.learnCollocations.textContent = collocations;
+    }
+
     const prog = LearningState.getLearnProgress();
     this.dom.learnProgress.textContent = `${prog.current} / ${prog.total}`;
 
-    // Session progress bar
     const stats = LearningState.getSessionStats(this.state.wordHistory);
     this.dom.learnSessionProgress.textContent = `已学 ${stats.learned} 词 · 熟练 ${stats.avgFamiliarity}%`;
 
@@ -386,20 +732,21 @@ const App = {
       el.classList.toggle("active", i === LearningState.currentIndex);
     });
 
-    // Character teaching tied to this word
+    // Reset hint level for new word
+    LearningState.resetHint();
+    this.updateHintProgress();
     this.setLearnCharacterDialogue(word);
   },
 
   navigateLearn(dir) {
-    const word = dir < 0 ? LearningState.goPrev() : LearningState.goNext();
+    if (dir < 0) LearningState.goPrev();
+    else LearningState.goNext();
     this.renderLearnWord();
   },
 
   speakLearnWord() {
     const word = LearningState.getCurrentWord();
-    if (word) {
-      TTSManager.speakWord(word.english, this.state.settings.voice);
-    }
+    if (word) TTSManager.speakWord(word.english, this.state.settings.voice);
   },
 
   markCurrentWord() {
@@ -409,11 +756,12 @@ const App = {
     this.addExp(EXP_CONFIG.expPerWord);
     this.addAffection(AFFECTION_CONFIG.perWordLearn);
     this.renderLearnWord();
+    this.renderLearnPreview();
     this.saveData();
-    this.setDialogue(this.state.character.name, `「${word.english}」记下了。线条留在这里了。`);
+    this.setDialogue(this.state.character.name, `「${word.english}」记下了。`);
   },
 
-  /* ── Learn character panel ── */
+  /* ── Progressive character hints ── */
 
   updateLearnCharDialogue(text) {
     if (this.dom.learnCharName) this.dom.learnCharName.textContent = this.state.character?.name || "格蕾修";
@@ -423,11 +771,9 @@ const App = {
   setLearnCharacterDialogue(word) {
     if (!word) return;
     const state = LearningState.getWordState(this.state.wordHistory, word);
-    const fam = LearningState.getFamiliarity(this.state.wordHistory, word);
     const record = this.state.wordHistory[word.english.toLowerCase()];
     const wrongCount = record?.wrongCount || 0;
 
-    // Generate context-aware character teaching
     let dialogue;
     if (state === "new") {
       dialogue = AIManager.makeCharacterComment({
@@ -438,13 +784,43 @@ const App = {
     } else {
       dialogue = `「${word.english}」还记得吗？是「${word.chinese}」。${word.example ? `像这句：${word.example}` : ""}`;
     }
-    this.setLearnCharacterDialogueDirect(dialogue);
+    this.updateLearnCharDialogue(dialogue);
+
+    if (this.state.settings.voice.autoSpeakDialogue) {
+      TTSManager.speak(dialogue, this.state.settings.voice);
+    }
   },
 
-  setLearnCharacterDialogueDirect(text) {
-    this.updateLearnCharDialogue(text);
+  advanceLearnHint() {
+    const level = LearningState.advanceHint();
+    if (level === null) return;
+
+    const hint = LearningState.getProgressiveHint(this.state.wordHistory);
+    this.updateLearnCharDialogue(hint.text);
+    this.updateHintProgress();
+
+    if (!hint.hasMore) {
+      this.dom.btnLearnHint.textContent = "已展开全部";
+      this.dom.btnLearnHint.style.opacity = "0.5";
+    } else {
+      this.dom.btnLearnHint.textContent = "💡 再问她一点";
+    }
+
     if (this.state.settings.voice.autoSpeakDialogue) {
-      TTSManager.speak(text, this.state.settings.voice);
+      TTSManager.speak(hint.text, this.state.settings.voice);
+    }
+  },
+
+  updateHintProgress() {
+    const hint = LearningState.getProgressiveHint(this.state.wordHistory);
+    const dots = this.dom.learnHintProgress?.querySelectorAll(".hint-dot");
+    if (!dots) return;
+    dots.forEach((dot, i) => {
+      dot.classList.toggle("active", i <= hint.level);
+    });
+    if (this.dom.btnLearnHint) {
+      this.dom.btnLearnHint.textContent = hint.hasMore ? "💡 点我问她" : "已展开全部";
+      this.dom.btnLearnHint.style.opacity = hint.hasMore ? "" : "0.5";
     }
   },
 
@@ -454,7 +830,7 @@ const App = {
   },
 
   /* ════════════════════════════════════════════════
-     CARDS MODE — Dynamic from LearningState + Ebbinghaus
+     CARDS MODE
      ════════════════════════════════════════════════ */
 
   startCards() {
@@ -463,6 +839,10 @@ const App = {
     this.dom.cardsEmpty.style.display = "none";
     this.dom.cardActions.style.display = "";
     this.dom.flashcard.style.display = "";
+    this.dom.cardHintArea.style.display = "";
+    this.dom.cardHintText.textContent = "";
+    this.dom.btnCardHint.textContent = "💡 给点提示";
+
     const dueCount = WordManager.getReviewStats(this.state.wordHistory).dueCount;
     if (dueCount > 0) {
       this.setDialogue(this.state.character.name, `有 ${dueCount} 个单词需要巩固。抽几张卡片过一遍。`);
@@ -477,6 +857,7 @@ const App = {
     if (!card || LearningState.cardDone) {
       this.dom.flashcard.style.display = "none";
       this.dom.cardActions.style.display = "none";
+      this.dom.cardHintArea.style.display = "none";
       this.dom.cardsEmpty.style.display = "";
       const prog = LearningState.getCardProgress();
       this.dom.cardsRememberedTotal.textContent = prog.remembered;
@@ -484,9 +865,12 @@ const App = {
       requestAnimationFrame(() => { this.dom.flashcard.style.transition = ""; });
       return;
     }
+
     this.dom.cardsEmpty.style.display = "none";
     this.dom.cardActions.style.display = "";
     this.dom.flashcard.style.display = "";
+    this.dom.cardHintArea.style.display = "";
+
     this.dom.flashcard.classList.toggle("flipped", card.flipped);
     this.dom.cardFrontWord.textContent = card.english;
     this.dom.cardFrontPhonetic.textContent = card.phonetic || "";
@@ -494,9 +878,16 @@ const App = {
     this.dom.cardBackExample.textContent = card.example || "";
     this.dom.cardBackExampleCn.textContent = card.exampleChinese || "";
     this.dom.cardBackTip.textContent = AIManager.makeMemoryTip({ word: card.english, meaning: card.chinese });
+
     const prog = LearningState.getCardProgress();
     const nextText = WordManager.getNextReviewText(this.state.wordHistory[card.english?.toLowerCase()]);
     this.dom.cardsProgress.textContent = `${prog.done + 1}/${prog.total} · 下次复习：${nextText}`;
+
+    // Reset card hint
+    this.dom.cardHintText.textContent = "";
+    this.dom.btnCardHint.textContent = "💡 给点提示";
+    this.dom.btnCardHint.style.opacity = "";
+
     requestAnimationFrame(() => { this.dom.flashcard.style.transition = ""; });
   },
 
@@ -512,11 +903,38 @@ const App = {
     }
   },
 
+  advanceCardHint() {
+    const card = LearningState.getCurrentCard();
+    if (!card || card.flipped || card.remembered !== null) return;
+
+    const level = LearningState.advanceCardHint();
+    const hints = [
+      `像"${card.chinese}"的感觉……试着想象一下。`,
+      `词性提示：试着猜猜它的词性。`,
+      card.example ? `常见搭配：${card.example}` : `再想一想"${card.chinese}"的用法。`,
+      `是"${card.chinese}"。记住这个画面了吗？`
+    ];
+    const hintText = hints[Math.min(level, hints.length - 1)];
+
+    if (level >= 0 && level < hints.length) {
+      this.dom.cardHintText.textContent = hintText;
+    }
+
+    if (level >= 3) {
+      this.dom.cardHintText.textContent = `答案是："${card.chinese}"`;
+      this.dom.btnCardHint.textContent = "已提示全部";
+      this.dom.btnCardHint.style.opacity = "0.5";
+    } else {
+      this.dom.btnCardHint.textContent = "💡 再提示一点";
+    }
+  },
+
   answerCard(remembered) {
     const card = LearningState.getCurrentCard();
     if (!card || card.remembered !== null) return;
     if (!card.flipped) { this.flipCard(); return; }
 
+    const prevCard = card;
     const next = LearningState.nextCard(remembered, this.state.wordHistory);
     if (remembered) {
       this.addExp(EXP_CONFIG.expPerQuizCorrect);
@@ -533,66 +951,218 @@ const App = {
     } else {
       const nextCard = LearningState.getCurrentCard();
       if (nextCard && remembered) {
-        this.setDialogue(this.state.character.name, `「${card.english}」记牢了。下一张——「${nextCard.english}」。`);
+        this.setDialogue(this.state.character.name, `「${prevCard.english}」记牢了。下一张——「${nextCard.english}」。`);
       } else if (nextCard) {
-        this.setDialogue(this.state.character.name, `「${card.english}」再放一放。先看下一张「${nextCard.english}」。`);
+        this.setDialogue(this.state.character.name, `「${prevCard.english}」再放一放。先看下一张「${nextCard.english}」。`);
       }
     }
   },
 
   /* ════════════════════════════════════════════════
-     REVIEW MODE — Ebbinghaus-based review
+     CONVERSATION MODE
+     ════════════════════════════════════════════════ */
+
+  startConversation() {
+    if (!this.state.conversation.currentWord) {
+      this.pickConversationWord();
+    }
+    this.renderConversationWord();
+    if (LearningState.conversationHistory.length === 0) {
+      this.dom.conversationLog.innerHTML = `<div class="conv-empty-msg">用学过的单词和角色对话吧。<br>她会帮你纠正语法，练习造句。</div>`;
+    } else {
+      this.renderConversationHistory();
+    }
+    this.setDialogue(this.state.character.name, "来，用今天学的词和我说说话。");
+  },
+
+  pickConversationWord() {
+    const words = LearningState.rangeWords;
+    if (words.length === 0) return;
+    // Pick from current session words, prefer unlearned
+    const unlearned = words.filter((w) => {
+      const r = this.state.wordHistory[w.english.toLowerCase()];
+      return !r || !r.learned || r.familiarity < 60;
+    });
+    const pool = unlearned.length > 0 ? unlearned : words;
+    const word = pool[Math.floor(Math.random() * pool.length)];
+    this.state.conversation.currentWord = word;
+    LearningState.startConversation(word);
+    this.renderConversationWord();
+  },
+
+  renderConversationWord() {
+    const word = this.state.conversation.currentWord;
+    if (!word) {
+      this.dom.convWord.innerHTML = "—";
+    } else {
+      this.dom.convWord.innerHTML = `${word.english} <span class="conv-word-meaning">${word.chinese}</span>`;
+    }
+  },
+
+  renderConversationHistory() {
+    const log = this.dom.conversationLog;
+    log.innerHTML = "";
+    LearningState.conversationHistory.forEach((entry) => {
+      const div = document.createElement("div");
+      div.className = `conv-message ${entry.role === "character" ? "character" : "user"}`;
+      const sender = entry.role === "character" ? this.state.character?.name || "角色" : "你";
+      div.innerHTML = `<span class="conv-msg-sender">${sender}</span>${entry.text}`;
+      log.appendChild(div);
+    });
+    log.scrollTop = log.scrollHeight;
+  },
+
+  async sendConversationMessage() {
+    const input = this.dom.conversationInput.value.trim();
+    if (!input) return;
+
+    const word = this.state.conversation.currentWord;
+    if (!word) {
+      this.setDialogue(this.state.character.name, "先选一个练习词吧。");
+      return;
+    }
+
+    // Add user message
+    LearningState.addConversationEntry("user", input);
+    this.dom.conversationInput.value = "";
+    this.renderConversationHistory();
+    this.state.conversation.lastUserMessage = input;
+
+    // Set typing indicator
+    this.setDialogue(this.state.character.name, "...");
+
+    // Get AI reply
+    if (this.state.settings.aiMode) {
+      const reply = await AIManager.generateConversationReply({
+        character: this.state.character,
+        word,
+        userInput: input,
+        history: LearningState.conversationHistory
+      });
+      LearningState.addConversationEntry("character", reply);
+      this.addExp(EXP_CONFIG.expPerConversation);
+      this.addAffection(AFFECTION_CONFIG.perConversation);
+    } else {
+      LearningState.addConversationEntry("character", `嗯，收到了。"${word.english}"——再试一个句子？`);
+    }
+
+    this.renderConversationHistory();
+    this.saveData();
+
+    // Set dialogue to last character message
+    const lastCharMsg = [...LearningState.conversationHistory].reverse().find((e) => e.role === "character");
+    if (lastCharMsg) {
+      this.setDialogue(this.state.character.name, lastCharMsg.text);
+    }
+  },
+
+  async requestConversationSuggest() {
+    const word = this.state.conversation.currentWord;
+    if (!word) return;
+
+    const prompts = [
+      `试试用 "${word.english}" 描述你今天做了什么。`,
+      `把 "${word.english}" 放在句首，造一个问句。`,
+      `"${word.english}" 和什么词搭配起来最自然？试着写一句。`
+    ];
+    const suggest = prompts[Math.floor(Math.random() * prompts.length)];
+
+    if (this.state.settings.aiMode && AIManager.isOnline()) {
+      const reply = await AIManager.generateConversationReply({
+        character: this.state.character,
+        word,
+        userInput: "请给我一个造句提示",
+        history: LearningState.conversationHistory
+      });
+      LearningState.addConversationEntry("character", reply);
+    } else {
+      LearningState.addConversationEntry("character", suggest);
+    }
+
+    this.renderConversationHistory();
+    const lastMsg = [...LearningState.conversationHistory].reverse().find((e) => e.role === "character");
+    if (lastMsg) this.setDialogue(this.state.character.name, lastMsg.text);
+  },
+
+  async requestSentenceCheck() {
+    const lastUser = this.state.conversation.lastUserMessage;
+    const word = this.state.conversation.currentWord;
+    if (!lastUser || !word) {
+      this.setDialogue(this.state.character.name, "先造个句子，我再帮你检查。");
+      return;
+    }
+
+    const check = await AIManager.checkSentence({
+      character: this.state.character,
+      word,
+      sentence: lastUser
+    });
+
+    LearningState.addConversationEntry("character", check);
+    this.renderConversationHistory();
+    this.setDialogue(this.state.character.name, check);
+    this.saveData();
+  },
+
+  /* ════════════════════════════════════════════════
+     REVIEW MODE
      ════════════════════════════════════════════════ */
 
   startReview() {
     const stats = WordManager.getReviewStats(this.state.wordHistory);
-    if (stats.dueCount === 0 && Object.keys(this.state.wordHistory).length === 0) {
-      this.dom.testProgress.textContent = "还没有学习的单词";
-      this.dom.testWordDisplay.textContent = "—";
-      this.dom.testPhonetic.textContent = "";
-      this.dom.testInputContainer.style.display = "none";
-      this.dom.testResult.innerHTML = "先学一些单词，再来复习吧。";
-      this.setDialogue(this.state.character.name, "还没有学过的单词。先去 Learn 模式看看吧。");
-      return;
-    }
-    const due = WordManager.getDueWords(this.state.wordHistory, this.state.settings.difficulty);
+    const due = LearningState.startReview(this.state.wordHistory, this.state.settings.vocabularyId);
+
     if (due.length === 0) {
-      this.dom.testProgress.textContent = "今日复习完成";
-      this.dom.testWordDisplay.textContent = "✓";
-      this.dom.testPhonetic.textContent = "";
-      this.dom.testInputContainer.style.display = "none";
-      this.dom.testResult.innerHTML = `今天没有到期的复习。已学 ${stats.total} 个单词。`;
-      this.setDialogue(this.state.character.name, `今天没有需要复习的单词。做得好。`);
+      if (stats.total === 0) {
+        this.dom.testProgress.textContent = "还没有学习的单词";
+        this.dom.testWordDisplay.textContent = "—";
+        this.dom.testPhonetic.textContent = "";
+        this.dom.testInputContainer.style.display = "none";
+        this.dom.testResult.innerHTML = "先学一些单词，再来复习吧。";
+        this.setDialogue(this.state.character.name, "还没有学过的单词。先去 Learn 模式看看吧。");
+      } else {
+        this.dom.testProgress.textContent = "今日复习完成";
+        this.dom.testWordDisplay.textContent = "✓";
+        this.dom.testPhonetic.textContent = "";
+        this.dom.testInputContainer.style.display = "none";
+        this.dom.testResult.innerHTML = `今天没有到期的复习。已学 ${stats.total} 个单词。`;
+        this.setDialogue(this.state.character.name, "今天没有需要复习的单词。做得好。");
+      }
       return;
     }
-    this.state.test.items = due.sort(() => Math.random() - 0.5).slice(0, 10);
+
+    this.state.test.items = due;
     this.state.test.index = 0;
     this.state.test.correct = 0;
     this.state.test.wrong = 0;
-    this.dom.testProgress.textContent = `今日待复习：${stats.dueCount} 个`;
+    if (this.dom.reviewStatsBar) {
+      this.dom.reviewStatsBar.textContent = `今日待复习：${stats.dueCount} 个 · 本轮 ${due.length} 题`;
+    }
     this.showReviewWord();
   },
 
   showReviewWord() {
-    const word = this.state.test.items[this.state.test.index];
+    const word = LearningState.getCurrentReviewWord();
     if (!word) { this.finishReview(); return; }
     this.dom.testWordDisplay.textContent = word.english;
     this.dom.testPhonetic.textContent = word.phonetic || "";
     this.dom.testInput.value = "";
     this.dom.testResult.innerHTML = "";
     this.dom.testInputContainer.style.display = "flex";
+    this.dom.testProgress.textContent = `第 ${LearningState.reviewIndex + 1} / ${LearningState.reviewQueue.length} 题`;
     this.setDialogue(this.state.character.name, `${word.english}。写下它的中文意思。`);
     setTimeout(() => this.dom.testInput?.focus(), 50);
   },
 
   checkTestAnswer() {
-    const word = this.state.test.items[this.state.test.index];
+    const word = LearningState.getCurrentReviewWord();
     if (!word) return;
     const answer = this.dom.testInput.value.trim();
     if (!answer) return;
+
     const correct = checkChineseAnswer(answer, word.chinese);
     this.dom.testInputContainer.style.display = "none";
-    // Record via Ebbinghaus + familiarity
+
     WordManager.recordReview(this.state.wordHistory, word.english, correct);
     const key = word.english.toLowerCase();
     if (this.state.wordHistory[key]) {
@@ -603,13 +1173,14 @@ const App = {
         : Math.max(0, (r.familiarity || 0) - 5);
       r.wrongCount = (r.wrongCount || 0) + (correct ? 0 : 1);
     }
+
     if (correct) {
       this.state.test.correct++;
       this.addExp(EXP_CONFIG.expPerTestCorrect);
       this.addAffection(AFFECTION_CONFIG.perTestCorrect);
       this.dom.testResult.innerHTML = `
         对了。${word.english} 的颜色已经留下来了。<br>
-        <span class="next-review">下次复习：${WordManager.getNextReviewText(this.state.wordHistory[word.english.toLowerCase()])}</span><br>
+        <span class="next-review">下次复习：${WordManager.getNextReviewText(this.state.wordHistory[key])}</span><br>
         <button class="chalk-choice next-review" id="btn-next-test">下一题</button>`;
       this.setDialogue(this.state.character.name, "对了。线条很稳。");
     } else {
@@ -617,21 +1188,21 @@ const App = {
       this.addAffection(AFFECTION_CONFIG.perWrong);
       this.dom.testResult.innerHTML = `
         还差一点。你写的是「${answer}」，正确是「${word.chinese}」。<br>
-        <span class="next-review">${WordManager.getNextReviewText(this.state.wordHistory[word.english.toLowerCase()])} 再复习一次</span><br>
+        <span class="next-review">${WordManager.getNextReviewText(this.state.wordHistory[key])} 再复习一次</span><br>
         <button class="chalk-choice next-review" id="btn-next-test">下一题</button>`;
       this.setDialogue(this.state.character.name, `没关系。${word.english} 现在是浅灰色。我们再给它加一层记忆。`);
     }
+
     document.getElementById("btn-next-test")?.addEventListener("click", () => {
-      this.state.test.index++;
+      LearningState.nextReview();
       this.showReviewWord();
     });
     this.saveData();
   },
 
   finishReview() {
-    const total = this.state.test.items.length;
-    this.dom.testProgress.textContent = "今日复习完成";
-    this.dom.testWordDisplay.textContent = `${this.state.test.correct}/${total}`;
+    this.dom.testProgress.textContent = "本轮复习完成";
+    this.dom.testWordDisplay.textContent = `${this.state.test.correct}/${this.state.test.items.length}`;
     this.dom.testPhonetic.textContent = "";
     this.dom.testInputContainer.style.display = "none";
     this.dom.testResult.innerHTML = `<button class="chalk-choice" id="btn-restart-test">再来一轮</button>`;
@@ -640,13 +1211,12 @@ const App = {
   },
 
   /* ════════════════════════════════════════════════
-     SAVE / LOAD — Multi-slot
+     SAVE / LOAD
      ════════════════════════════════════════════════ */
 
   openSaveModal(mode) {
     this.state.saveMode = mode;
     this.dom.saveModalTitle.textContent = mode === "save" ? "保存进度" : "读取存档";
-    this.dom.btnSaveExport.style.display = "none";
     this.renderSaveSlots();
     this.dom.saveModal.classList.add("active");
     this.dom.saveModal.setAttribute("aria-hidden", "false");
@@ -659,7 +1229,6 @@ const App = {
 
   renderSaveSlots() {
     this.dom.saveSlotList.innerHTML = "";
-    const slots = SaveManager.getSlots();
     for (let i = 0; i < 6; i++) {
       const info = SaveManager.getSlotInfo(i);
       const item = document.createElement("div");
@@ -677,8 +1246,14 @@ const App = {
       if (info.exists) {
         const meta = document.createElement("div");
         meta.className = "save-slot-meta";
-        const rangeText = info.range ? ` · 范围 ${info.range}` : "";
-        meta.textContent = `${info.character} · Lv.${info.level} · ${info.wordCount} 词${rangeText} · ${info.savedAt}`;
+        const parts = [];
+        if (info.character) parts.push(info.character);
+        if (info.level) parts.push(`Lv.${info.level}`);
+        if (info.vocabulary) parts.push(info.vocabulary);
+        if (info.range) parts.push(info.range);
+        parts.push(`${info.wordCount || 0} 词`);
+        parts.push(info.savedAt || "");
+        meta.textContent = parts.join(" · ");
         infoDiv.appendChild(meta);
       }
 
@@ -725,6 +1300,7 @@ const App = {
     this.ensureCharacter();
     this.updateAllCharacterViews();
     this.renderCharacterSelection(this.dom.characterGrid, this.state.settings.characterId);
+    this.renderVocabSelector("settings-vocab-selector", this.state.settings.vocabularyId);
     this.syncSettingsControls();
     this.saveData(false);
     this.closeSaveModal();
@@ -740,10 +1316,6 @@ const App = {
     this.setDialogue("系统", `存档位 ${index + 1} 已删除。`);
   },
 
-  exportSaveSlot() {
-    // Export handled per-slot via action buttons in renderSaveSlots
-  },
-
   /* ════════════════════════════════════════════════
      DIALOGUE
      ════════════════════════════════════════════════ */
@@ -753,15 +1325,21 @@ const App = {
     TTSManager.stop();
     this.state.isTyping = true;
     this.state.currentDialogueText = text || "";
-    this.dom.dialogueName.textContent = name || this.state.character.name;
+    this.dom.dialogueName.textContent = name || this.state.character?.name || "";
     this.dom.dialogueText.textContent = "";
     this.dom.dialogueContinue.classList.remove("visible");
-    this.state.dialogueLog.push({ name: this.dom.dialogueName.textContent, text: this.state.currentDialogueText, at: new Date().toISOString() });
+    this.state.dialogueLog.push({
+      name: this.dom.dialogueName.textContent,
+      text: this.state.currentDialogueText,
+      at: new Date().toISOString()
+    });
     const chars = [...this.state.currentDialogueText];
     let idx = 0;
     this.state.typewriterTimer = setInterval(() => {
-      if (idx < chars.length) { this.dom.dialogueText.textContent += chars[idx]; idx++; }
-      else {
+      if (idx < chars.length) {
+        this.dom.dialogueText.textContent += chars[idx];
+        idx++;
+      } else {
         clearInterval(this.state.typewriterTimer);
         this.state.typewriterTimer = null;
         this.state.isTyping = false;
@@ -791,18 +1369,17 @@ const App = {
 
   openSettingsModal() {
     this.renderCharacterSelection(this.dom.modalCharacterGrid, this.state.settings.characterId);
-    this.dom.modalDifficulty.value = this.state.settings.difficulty;
-    this.dom.modalSpriteUrl.value = this.state.settings.customSprite;
+    this.renderVocabSelector("modal-vocab-selector", this.state.settings.vocabularyId);
+    this.dom.modalAiProvider.value = this.state.settings.ai?.provider || "deepseek";
+    this.dom.modalAiKey.value = this.state.settings.ai?.apiKey || "";
+    this.dom.modalAiEndpoint.value = this.state.settings.ai?.endpoint || "";
+    this.dom.modalAiModel.value = this.state.settings.ai?.model || "";
     this.dom.modalVoiceRate.value = this.state.settings.voice.rate;
     this.dom.modalVoicePitch.value = this.state.settings.voice.pitch;
     this.dom.modalAutoSpeak.checked = this.state.settings.voice.autoSpeakDialogue;
     this.dom.spriteSizeSlider.value = this.state.settings.spriteSize;
     this.dom.spriteSizeValue.textContent = this.state.settings.spriteSize;
     this.updateActiveSpritePreset(this.state.settings.spriteSize);
-    this.dom.modalAiProvider.value = this.state.settings.ai?.provider || "mock";
-    this.dom.modalAiKey.value = this.state.settings.ai?.apiKey || "";
-    this.dom.modalAiEndpoint.value = this.state.settings.ai?.endpoint || "";
-    this.dom.modalAiModel.value = this.state.settings.ai?.model || "";
     this.updateVoiceOptions();
     this.dom.settingsModal.classList.add("active");
     this.dom.settingsModal.setAttribute("aria-hidden", "false");
@@ -832,26 +1409,40 @@ const App = {
   },
 
   applyModalVoiceToState(save) {
-    this.state.settings.voice = { ...this.state.settings.voice, provider: "browser",
-      voiceName: this.dom.modalVoiceSelect.value, rate: Number(this.dom.modalVoiceRate.value || 1),
-      pitch: Number(this.dom.modalVoicePitch.value || 1), autoSpeakDialogue: this.dom.modalAutoSpeak.checked };
+    this.state.settings.voice = {
+      ...this.state.settings.voice, provider: "browser",
+      voiceName: this.dom.modalVoiceSelect.value,
+      rate: Number(this.dom.modalVoiceRate.value || 1),
+      pitch: Number(this.dom.modalVoicePitch.value || 1),
+      autoSpeakDialogue: this.dom.modalAutoSpeak.checked
+    };
     if (save) this.saveData();
   },
 
   saveModalSettings() {
     const selected = this.dom.modalCharacterGrid.querySelector(".character-card.selected");
     if (selected) this.state.settings.characterId = selected.dataset.id;
-    this.state.settings.difficulty = this.dom.modalDifficulty.value;
-    this.state.settings.customSprite = this.dom.modalSpriteUrl.value.trim();
-    this.state.settings.ai = { provider: this.dom.modalAiProvider.value, apiKey: this.dom.modalAiKey.value,
-      endpoint: this.dom.modalAiEndpoint.value, model: this.dom.modalAiModel.value };
+
+    const vocabId = this.getSelectedVocabId("modal-vocab-selector");
+    this.state.settings.vocabularyId = vocabId || "cet4";
+    this.state.settings.difficulty = BANK_TO_DIFFICULTY[vocabId] || "medium";
+
+    this.state.settings.ai = {
+      provider: this.dom.modalAiProvider.value,
+      apiKey: this.dom.modalAiKey.value,
+      endpoint: this.dom.modalAiEndpoint.value,
+      model: this.dom.modalAiModel.value
+    };
+
     AIManager.setConfig(this.state.settings.ai);
-    WordManager.setDifficulty(this.state.settings.difficulty);
-    LearningState.init(this.state.settings.difficulty);
+    WordManager.setVocabulary(vocabId);
+    LearningState.setVocabulary(vocabId);
+
     this.applyModalVoiceToState(false);
     this.ensureCharacter();
     this.updateAllCharacterViews();
     this.renderCharacterSelection(this.dom.characterGrid, this.state.settings.characterId);
+    this.renderVocabSelector("settings-vocab-selector", this.state.settings.vocabularyId);
     this.syncSettingsControls();
     this.saveData();
     this.closeSettingsModal();
@@ -896,17 +1487,21 @@ const App = {
       if (settings) this.state.settings = { ...this.state.settings, ...JSON.parse(settings) };
       if (profile) this.state.profile = { ...this.state.profile, ...JSON.parse(profile) };
       if (history) this.state.wordHistory = JSON.parse(history);
-      this.state.settings.voice = { provider: "browser", voiceName: "", rate: 1, pitch: 1.08, volume: 1, autoSpeakDialogue: false, autoSpeakExamples: false, ...(this.state.settings.voice || {}) };
-      this.state.settings.ai = { provider: "mock", apiKey: "", endpoint: "", model: "", ...(this.state.settings.ai || {}) };
+      this.state.settings.voice = {
+        provider: "browser", voiceName: "", rate: 1, pitch: 1.08, volume: 1,
+        autoSpeakDialogue: false, autoSpeakExamples: false,
+        ...(this.state.settings.voice || {})
+      };
+      this.state.settings.ai = {
+        provider: "deepseek", apiKey: "", endpoint: "", model: "deepseek-v4-flash",
+        ...(this.state.settings.ai || {})
+      };
       this.state.settings.spriteTranslateX = this.state.settings.spriteTranslateX || 0;
       this.state.settings.spriteTranslateY = this.state.settings.spriteTranslateY || 0;
       this.state.settings.spriteScale = this.state.settings.spriteScale || 1;
-      // Restore learning state after WordManager is ready
-      if (ls) {
-        window.__pendingLearningState = JSON.parse(ls);
-      }
+      if (ls) window.__pendingLearningState = JSON.parse(ls);
       AIManager.setConfig(this.state.settings.ai);
-      WordManager.setDifficulty(this.state.settings.difficulty);
+      WordManager.setVocabulary(this.state.settings.vocabularyId || "cet4");
     } catch (e) { console.warn("[App] 数据读取失败", e); }
   },
 
@@ -926,18 +1521,32 @@ const App = {
   addExp(amount) {
     this.state.profile.exp += amount;
     let next = this.getExpToNextLevel();
-    while (this.state.profile.exp >= next) { this.state.profile.exp -= next; this.state.profile.level++; next = this.getExpToNextLevel(); }
-    this.updateStatusBar(); this.saveData();
+    while (this.state.profile.exp >= next) {
+      this.state.profile.exp -= next;
+      this.state.profile.level++;
+      next = this.getExpToNextLevel();
+    }
+    this.updateStatusBar();
+    this.saveData();
   },
 
   addAffection(amount) {
-    this.state.profile.affection = Math.max(0, Math.min(AFFECTION_CONFIG.maxAffection, this.state.profile.affection + amount));
-    this.updateStatusBar(); this.saveData();
+    this.state.profile.affection = Math.max(0, Math.min(
+      AFFECTION_CONFIG.maxAffection,
+      this.state.profile.affection + amount
+    ));
+    this.updateStatusBar();
+    this.saveData();
   },
 
   getExpToNextLevel() {
-    return Math.floor(EXP_CONFIG.expToNextLevelBase * Math.pow(EXP_CONFIG.expToNextLevelMultiplier, this.state.profile.level - 1));
+    return Math.floor(EXP_CONFIG.expToNextLevelBase *
+      Math.pow(EXP_CONFIG.expToNextLevelMultiplier, this.state.profile.level - 1));
   },
+
+  /* ════════════════════════════════════════════════
+     UTIL
+     ════════════════════════════════════════════════ */
 
   shortText(text, max) {
     const clean = String(text || "").replace(/\s+/g, " ").trim();

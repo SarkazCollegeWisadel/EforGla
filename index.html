@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>AI 英语学习教室</title>
+  <title>EforGla 语之恋</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;600;700&family=Inter:wght@400;500;600&family=Kalam:wght@400;700&display=swap" rel="stylesheet">
@@ -11,49 +11,53 @@
 </head>
 <body>
   <div id="app">
+
+    <!-- ════════════════════════════════════════════════
+    PAGE: WELCOME — Galgame Opening
+    ════════════════════════════════════════════════ -->
     <section id="page-welcome" class="page active">
       <div class="scene-bg"></div>
-      <div class="welcome-copy">
-        <p class="eyebrow">AI English Classroom</p>
-        <h1>安静地学一点英语</h1>
-        <p>像走进一间放学后的教室。角色在旁边，黑板上只写今天需要记住的东西。</p>
-        <button id="btn-start" class="soft-command">进入教室</button>
+      <div class="opening-overlay"></div>
+      <div class="opening-content">
+        <p class="opening-eyebrow">Galgame × English Learning</p>
+        <h1 class="opening-title">
+          <span class="opening-title-en">EforGla</span>
+          <span class="opening-title-cn">语之恋</span>
+        </h1>
+        <p class="opening-subtitle">「今天也一起，<br>把语言重新涂上颜色吧。」</p>
+        <button id="btn-start" class="opening-button">进入教室</button>
       </div>
     </section>
 
+    <!-- ════════════════════════════════════════════════
+    PAGE: SETTINGS — 课前准备
+    ════════════════════════════════════════════════ -->
     <section id="page-settings" class="page">
       <div class="scene-bg"></div>
       <div class="settings-sheet">
         <header>
           <p class="eyebrow">Before Class</p>
           <h2>课前准备</h2>
-          <p>只保留必要设置。开始后，更多选项会安静地收在角落里。</p>
+          <p>选好角色和词库，然后进教室。其他设置课间再调。</p>
         </header>
 
+        <!-- Character -->
         <div class="setting-group">
           <h3>陪你学习的角色</h3>
           <div id="character-grid" class="character-grid"></div>
         </div>
 
-        <div class="setting-row">
-          <label>
-            难度
-            <select id="difficulty-select">
-              <option value="easy">简单（初中）</option>
-              <option value="medium" selected>中等（CET-4）</option>
-              <option value="hard">困难（CET-6）</option>
-            </select>
-          </label>
-          <label>
-            自定义立绘 URL
-            <input id="sprite-url" type="text" placeholder="留空使用默认立绘">
-          </label>
+        <!-- Vocabulary -->
+        <div class="setting-group">
+          <h3>词库选择</h3>
+          <div class="vocab-selector" id="settings-vocab-selector"></div>
         </div>
 
+        <!-- Quick toggles -->
         <div class="setting-row quiet-row">
           <label class="check-line">
             <input id="ai-mode-toggle" type="checkbox" checked>
-            <span>角色化讲解</span>
+            <span>AI 角色讲解</span>
           </label>
           <label class="check-line">
             <input id="tts-auto-toggle" type="checkbox">
@@ -65,77 +69,121 @@
       </div>
     </section>
 
+    <!-- ════════════════════════════════════════════════
+    PAGE: MAIN — 教室
+    ════════════════════════════════════════════════ -->
     <section id="page-main" class="page">
       <div class="scene-bg"></div>
       <div class="scene-softlight"></div>
 
+      <!-- Left: Character stage -->
       <aside id="character-stage">
         <img id="character-sprite" class="character-sprite" src="assets/0.png" alt="角色立绘">
       </aside>
 
+      <!-- Right: Blackboard -->
       <main id="blackboard-panel" aria-label="黑板学习区">
         <nav id="mode-tabs" class="chalk-tabs" aria-label="学习模式">
           <button class="mode-tab active" data-mode="learn">Learn</button>
           <button class="mode-tab" data-mode="cards">Cards</button>
-          <button class="mode-tab" data-mode="test">Review</button>
+          <button class="mode-tab" data-mode="conversation">Conversation</button>
+          <button class="mode-tab" data-mode="review">Review</button>
         </nav>
 
+        <!-- ── Learn Content ── -->
         <section id="learn-content" class="board-layer mode-content active">
-          <div class="board-title">today's words</div>
-          <div class="learn-columns">
-            <!-- Left: Preview & word list -->
-            <div class="learn-col learn-col-preview">
-              <div class="preview-header">
-                <span class="preview-bank" id="learn-bank-label">CET-4</span>
-                <span class="preview-range" id="learn-range-label">1-50</span>
+          <div class="board-title">today's lesson</div>
+
+          <!-- Range bar -->
+          <div class="learn-range-bar" id="learn-range-bar">
+            <span class="range-bank-label" id="learn-bank-label">CET-4</span>
+            <span class="range-sep">·</span>
+            <span class="range-label" id="learn-range-label">1 ~ 20</span>
+            <span class="range-sep">·</span>
+            <span class="range-count-label" id="learn-count-label">20 词</span>
+            <button class="range-config-btn" id="btn-range-config" title="调整学习范围">⚙</button>
+          </div>
+
+          <!-- Range config panel (hidden by default) -->
+          <div class="range-config-panel" id="range-config-panel" style="display:none">
+            <div class="learn-setup-step" id="learn-sort-step">
+              <div class="range-config-row">
+                <span class="range-config-label">方式</span>
+                <div class="range-preset-btns" id="sort-mode-btns"></div>
               </div>
+              <button class="soft-command wide" id="btn-confirm-sort">确定方式</button>
+            </div>
+
+            <div class="learn-setup-thinking" id="learn-sort-thinking" style="display:none">
+              AI 正在整理词库顺序...
+            </div>
+
+            <div class="learn-setup-step" id="learn-range-step" style="display:none">
+              <div class="range-config-row">
+                <span class="range-config-label">词数</span>
+                <div class="range-preset-btns" id="count-preset-btns"></div>
+              </div>
+              <div class="range-config-row" id="count-custom-row" style="display:none">
+                <input type="number" id="count-custom-value" placeholder="自定义数量" min="1" max="200" class="range-custom-input">
+              </div>
+              <div class="range-config-row">
+                <span class="range-config-label">难度</span>
+                <div class="range-preset-btns" id="difficulty-range-btns"></div>
+              </div>
+              <button class="soft-command wide" id="btn-apply-range">开始整理词表</button>
+            </div>
+          </div>
+
+          <!-- Lesson plan -->
+          <div class="lesson-plan" id="lesson-plan" style="display:none"></div>
+
+          <div class="learn-columns">
+            <!-- Left: word list -->
+            <div class="learn-col learn-col-preview">
               <div class="preview-stats" id="learn-preview-stats">
-                <span>已学 <b id="preview-learned">0</b>/<span id="preview-total">50</span></span>
+                <span>已学 <b id="preview-learned">0</b>/<span id="preview-total">20</span></span>
                 <span>熟练 <b id="preview-familiarity">0</b>%</span>
               </div>
               <div class="preview-word-list" id="learn-word-list"></div>
               <button id="btn-start-learning" class="start-learn-btn">开始学习</button>
             </div>
 
-            <!-- Center: Word display -->
+            <!-- Center: word blackboard -->
             <div class="learn-col learn-col-word">
               <div id="learn-before-start" class="learn-before-start">
-                <p>当前词库已准备就绪</p>
-                <p class="learn-before-sub">点"开始学习"进入今日课程</p>
+                <p>词库已准备就绪</p>
+                <p class="learn-before-sub">调整范围后，点「开始学习」进入今日课程</p>
               </div>
               <div id="learn-word-area" class="learn-word-area" style="display:none">
                 <span id="learn-word" class="learn-word">—</span>
                 <span id="learn-phonetic" class="learn-phonetic"></span>
                 <span id="learn-meaning" class="learn-meaning"></span>
+                <div class="learn-details" id="learn-details">
+                  <span id="learn-pos" class="learn-pos"></span>
+                  <span id="learn-synonyms" class="learn-synonyms"></span>
+                  <span id="learn-antonyms" class="learn-antonyms"></span>
+                  <span id="learn-root" class="learn-root"></span>
+                </div>
                 <div id="learn-example-area" class="learn-example-area">
                   <p id="learn-example" class="learn-example"></p>
                   <p id="learn-example-cn" class="learn-example-cn"></p>
                 </div>
-                <div id="learn-memory-tip" class="learn-memory"></div>
+                <div id="learn-collocations" class="learn-collocations"></div>
                 <div id="learn-session-progress" class="learn-session-progress"></div>
               </div>
               <div class="learn-nav-bar" id="learn-nav-bar" style="display:none">
                 <button id="btn-learn-prev" class="chalk-choice" title="上一个">←</button>
-                <span id="learn-progress" class="learn-progress">1/50</span>
+                <span id="learn-progress" class="learn-progress">1/20</span>
                 <button id="btn-learn-next" class="chalk-choice" title="下一个">→</button>
                 <button id="btn-learn-sound" class="chalk-choice" title="朗读">♪</button>
                 <button id="btn-mark-learned" class="chalk-choice" title="标记为已学">了解了</button>
               </div>
             </div>
 
-            <!-- Right: Character teaching panel -->
-            <div class="learn-col learn-col-char">
-              <div class="learn-char-name" id="learn-char-name">格蕾修</div>
-              <div class="learn-char-bubble" id="learn-char-dialogue">
-                从左边选择今天要学的范围，然后开始吧。
-              </div>
-              <div class="learn-char-extra" id="learn-char-extra">
-                <button id="btn-learn-listen" class="chalk-choice" title="听角色讲解">听她讲</button>
-              </div>
-            </div>
           </div>
         </section>
 
+        <!-- ── Cards Content ── -->
         <section id="cards-content" class="board-layer mode-content">
           <div class="board-title">flash card</div>
           <div class="flashcard-wrap">
@@ -154,6 +202,11 @@
                 </div>
               </span>
             </button>
+            <!-- Card character hint -->
+            <div class="card-hint-area" id="card-hint-area" style="display:none">
+              <button id="btn-card-hint" class="chalk-choice hint-btn">💡 给点提示</button>
+              <span id="card-hint-text" class="card-hint-text"></span>
+            </div>
             <div class="memory-actions" id="card-actions">
               <button id="btn-card-forgot" class="chalk-choice" type="button">没记住</button>
               <button id="btn-card-remembered" class="chalk-choice" type="button">记住了</button>
@@ -167,10 +220,35 @@
           <div id="cards-progress" class="board-progress">0 张 · 0 张待复习</div>
         </section>
 
-        <section id="test-content" class="board-layer mode-content">
+        <!-- ── Conversation Content ── -->
+        <section id="conversation-content" class="board-layer mode-content">
+          <div class="board-title">conversation</div>
+          <div class="conversation-wrap">
+            <div class="conversation-info" id="conv-info">
+              <span class="conv-word-label">当前练习词：</span>
+              <strong id="conv-word" class="conv-word-display">—</strong>
+              <button id="btn-conv-pick-word" class="chalk-choice">换一个词</button>
+            </div>
+            <div class="conversation-log" id="conversation-log">
+              <div class="conv-empty-msg">用学过的单词和角色对话吧。<br>她会帮你纠正语法，练习造句。</div>
+            </div>
+            <div class="conversation-input-row">
+              <input id="conversation-input" type="text" placeholder="试着用这个词造个句子...">
+              <button id="btn-conversation-send" class="chalk-choice">发送</button>
+            </div>
+            <div class="conversation-actions">
+              <button id="btn-conv-suggest" class="chalk-choice">给我一个提示</button>
+              <button id="btn-conv-correct" class="chalk-choice">帮我检查上一句</button>
+            </div>
+          </div>
+        </section>
+
+        <!-- ── Review Content ── -->
+        <section id="review-content" class="board-layer mode-content">
           <div class="board-title">gentle review</div>
           <div class="review-wrap">
             <span id="test-progress" class="board-progress">第 1 / 5 题</span>
+            <div class="review-stats-bar" id="review-stats-bar"></div>
             <strong id="test-word-display" class="review-word">apple</strong>
             <em id="test-phonetic" class="review-phonetic">/ˈæpəl/</em>
             <div id="test-input-container" class="review-input">
@@ -182,6 +260,7 @@
         </section>
       </main>
 
+      <!-- Galgame dialogue box -->
       <section id="dialogue-container">
         <div id="dialogue-box">
           <div id="dialogue-name" class="dialogue-name">格蕾修</div>
@@ -191,6 +270,7 @@
         </div>
       </section>
 
+      <!-- Status bar -->
       <header id="status-bar" aria-label="学习状态">
         <div class="status-profile">
           <span id="status-avatar" class="avatar">格</span>
@@ -204,19 +284,18 @@
         </div>
       </header>
 
+      <!-- Toolbar -->
       <nav id="adv-toolbar" aria-label="学习工具">
         <button id="btn-char-switch" title="切换角色">角色</button>
         <button id="btn-save" title="保存进度">保存</button>
         <button id="btn-load" title="读取进度">读取</button>
         <button id="btn-toolbar-settings" title="设置">设置</button>
       </nav>
-
-      <div id="char-info-card" class="char-info-card" hidden>
-        <strong id="char-info-name">格蕾修</strong>
-        <span id="char-info-detail">色彩小画家 · Lv.1</span>
-      </div>
     </section>
 
+    <!-- ════════════════════════════════════════════════
+    MODAL: Save / Load
+    ════════════════════════════════════════════════ -->
     <div id="save-modal" class="modal-overlay" aria-hidden="true">
       <div class="modal-content save-modal-content">
         <header class="modal-header">
@@ -231,27 +310,57 @@
       </div>
     </div>
 
+    <!-- ════════════════════════════════════════════════
+    MODAL: Settings
+    ════════════════════════════════════════════════ -->
     <div id="settings-modal" class="modal-overlay" aria-hidden="true">
       <div class="modal-content">
         <header class="modal-header">
           <h3>安静设置</h3>
           <button id="btn-modal-close" class="tiny-command">close</button>
         </header>
+
+        <!-- Character selection -->
+        <h4 class="modal-section-title">角色</h4>
         <div id="modal-character-grid" class="character-grid compact"></div>
+
+        <!-- Vocabulary -->
+        <h4 class="modal-section-title">词库</h4>
+        <div class="vocab-selector" id="modal-vocab-selector"></div>
+
+        <!-- AI Provider -->
+        <h4 class="modal-section-title">AI Provider</h4>
+        <details class="ai-provider-details" open>
+          <summary class="ai-provider-summary">接入配置</summary>
+          <div class="setting-row">
+            <label>Provider<select id="modal-ai-provider">
+              <option value="deepseek">DeepSeek</option>
+              <option value="openai">OpenAI</option>
+              <option value="claude">Claude</option>
+              <option value="gemini">Gemini</option>
+              <option value="mock">本地离线 (Mock)</option>
+            </select></label>
+            <label>API Key<input id="modal-ai-key" type="password" placeholder="输入 API Key"></label>
+          </div>
+          <div class="setting-row">
+            <label>Endpoint<input id="modal-ai-endpoint" type="text" placeholder="默认"></label>
+            <label>Model<input id="modal-ai-model" type="text" placeholder="默认"></label>
+          </div>
+        </details>
+
+        <!-- TTS placeholder -->
+        <h4 class="modal-section-title">语音 (TTS 预留)</h4>
         <div class="setting-row">
-          <label>难度<select id="modal-difficulty">
-            <option value="easy">简单（初中）</option>
-            <option value="medium" selected>中等（CET-4）</option>
-            <option value="hard">困难（CET-6）</option>
-          </select></label>
-          <label>立绘 URL<input id="modal-sprite-url" type="text" placeholder="留空使用默认立绘"></label>
-        </div>
-        <div class="setting-row">
-          <label>语音<select id="modal-voice-select"></select></label>
+          <label>语音引擎<select id="modal-voice-select"></select></label>
           <label>语速<input id="modal-voice-rate" type="range" min="0.7" max="1.4" step="0.05"></label>
           <label>音调<input id="modal-voice-pitch" type="range" min="0.7" max="1.4" step="0.05"></label>
         </div>
         <label class="check-line"><input id="modal-auto-speak" type="checkbox"><span>自动朗读对话</span></label>
+
+        <p class="tts-placeholder-note">* TTS 与实时语音功能将在后续版本接入，架构已预留。</p>
+
+        <!-- Sprite size -->
+        <h4 class="modal-section-title">立绘显示</h4>
         <div class="setting-row sprite-size-area">
           <label>
             角色立绘大小
@@ -268,23 +377,7 @@
             </div>
           </label>
         </div>
-        <details class="ai-provider-details">
-          <summary class="ai-provider-summary">AI 接入配置</summary>
-          <div class="setting-row">
-            <label>Provider<select id="modal-ai-provider">
-              <option value="mock">本地离线 (Mock)</option>
-              <option value="openai">OpenAI</option>
-              <option value="deepseek">DeepSeek</option>
-              <option value="claude">Claude</option>
-              <option value="gemini">Gemini</option>
-            </select></label>
-            <label>API Key<input id="modal-ai-key" type="password" placeholder="暂不填写，使用离线模式"></label>
-          </div>
-          <div class="setting-row">
-            <label>Endpoint<input id="modal-ai-endpoint" type="text" placeholder="可选，默认使用官方 API"></label>
-            <label>Model<input id="modal-ai-model" type="text" placeholder="可选，默认使用官方推荐模型"></label>
-          </div>
-        </details>
+
         <div class="modal-actions">
           <button id="btn-voice-test" class="soft-command secondary">试听</button>
           <button id="btn-modal-save" class="soft-command">保存</button>
@@ -292,6 +385,7 @@
       </div>
     </div>
   </div>
+  <input id="tavern-card-input" type="file" accept=".json,application/json" hidden>
 
   <script src="data.js"></script>
   <script src="characters.js"></script>
