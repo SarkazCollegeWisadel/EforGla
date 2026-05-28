@@ -14,6 +14,8 @@ const LearningState = {
   rangeEnd: 20,
   setupStage: "sort",
   settingsCollapsed: false,
+  learnPhase: "k1",
+  userCategoryPrompt: "",
 
   /* ── Quantity per session ── */
   learnCount: 20,
@@ -67,6 +69,8 @@ const LearningState = {
     this.setupStage = "sort";
     this.settingsCollapsed = false;
     this.inSession = false;
+    this.learnPhase = "k1";
+    this.userCategoryPrompt = "";
     this.loadRange();
   },
 
@@ -519,6 +523,8 @@ const LearningState = {
       difficultyRange: this.difficultyRange,
       setupStage: this.setupStage,
       settingsCollapsed: this.settingsCollapsed,
+      learnPhase: this.learnPhase,
+      userCategoryPrompt: this.userCategoryPrompt,
       currentIndex: this.currentIndex,
       inSession: this.inSession,
       conversationHistory: this.conversationHistory.slice(-200),
@@ -540,6 +546,8 @@ const LearningState = {
     this.difficultyRange = data.difficultyRange || { min: 1, max: 5, id: "all" };
     this.setupStage = data.setupStage || "sort";
     this.settingsCollapsed = data.settingsCollapsed ?? false;
+    this.learnPhase = data.learnPhase || "k1";
+    this.userCategoryPrompt = data.userCategoryPrompt || "";
     this.currentIndex = data.currentIndex ?? 0;
     this.inSession = data.inSession ?? false;
     this.conversationHistory = data.conversationHistory || [];

@@ -83,6 +83,7 @@
 
       <!-- Right: Blackboard -->
       <main id="blackboard-panel" aria-label="黑板学习区">
+        <div id="blackboard-surface" class="blackboard-surface"></div>
         <nav id="mode-tabs" class="chalk-tabs" aria-label="学习模式">
           <button class="mode-tab active" data-mode="learn">Learn</button>
           <button class="mode-tab" data-mode="cards">Cards</button>
@@ -104,12 +105,57 @@
             <button class="range-config-btn" id="btn-range-config" title="调整学习范围">⚙</button>
           </div>
 
-          <!-- Range config panel (hidden by default) -->
+          <!-- k1: Sort + Custom Prompt -->
+          <div class="learn-phase" id="learn-k1" style="display:none">
+            <div class="phase-title">配置学习方式</div>
+            <div class="range-config-row">
+              <span class="range-config-label">方式</span>
+              <div class="range-preset-btns" id="sort-mode-btns"></div>
+            </div>
+            <div class="range-config-row">
+              <span class="range-config-label">词数</span>
+              <div class="range-preset-btns" id="k1-count-btns"></div>
+            </div>
+            <div class="range-config-row" id="k1-count-custom-row" style="display:none">
+              <input type="number" id="k1-count-value" placeholder="自定义数量" min="1" max="200" class="range-custom-input">
+            </div>
+            <div class="range-config-row">
+              <span class="range-config-label">难度</span>
+              <div class="range-preset-btns" id="k1-difficulty-btns"></div>
+            </div>
+            <div class="range-config-row">
+              <span class="range-config-label">提示词</span>
+              <input type="text" id="k1-prompt" class="range-custom-input wide" placeholder="例如：按情感色彩分类、按学术场景分组..." style="flex:1">
+            </div>
+            <button class="soft-command wide" id="btn-k1-next">下一步</button>
+          </div>
+
+          <!-- k2: Category Preview -->
+          <div class="learn-phase" id="learn-k2" style="display:none">
+            <div class="phase-title">词库分类预览</div>
+            <div id="k2-categories" class="k2-categories"></div>
+            <div class="phase-actions">
+              <button class="chalk-choice" id="btn-k2-back">返回</button>
+              <button class="soft-command" id="btn-k2-next">下一步</button>
+            </div>
+          </div>
+
+          <!-- k3: Confirm Range -->
+          <div class="learn-phase" id="learn-k3" style="display:none">
+            <div class="phase-title">确认学习范围</div>
+            <div class="k3-summary" id="k3-summary"></div>
+            <div class="phase-actions">
+              <button class="chalk-choice" id="btn-k3-back">返回</button>
+              <button class="soft-command" id="btn-k3-collapse">收起并开始</button>
+            </div>
+          </div>
+
+          <!-- Range config panel (legacy toggle) -->
           <div class="range-config-panel" id="range-config-panel" style="display:none">
             <div class="learn-setup-step" id="learn-sort-step">
               <div class="range-config-row">
                 <span class="range-config-label">方式</span>
-                <div class="range-preset-btns" id="sort-mode-btns"></div>
+                <div class="range-preset-btns" id="sort-mode-btns-legacy"></div>
               </div>
               <button class="soft-command wide" id="btn-confirm-sort">确定方式</button>
             </div>
@@ -359,6 +405,50 @@
 
         <p class="tts-placeholder-note">* TTS 与实时语音功能将在后续版本接入，架构已预留。</p>
 
+        <!-- MCP -->
+        <h4 class="modal-section-title">MCP 工具</h4>
+        <div class="setting-row">
+          <label class="check-line"><input id="modal-mcp-enabled" type="checkbox"><span>启用 MCP</span></label>
+        </div>
+        <div class="setting-row">
+          <label>MCP 服务器 URL<input id="modal-mcp-url" type="text" placeholder="http://localhost:3000/mcp"></label>
+          <button type="button" class="tiny-command" id="btn-mcp-test">测试连接</button>
+        </div>
+        <div id="mcp-tools-list" class="mcp-tools-list" style="display:none"></div>
+
+        <!-- Scene -->
+        <h4 class="modal-section-title">场景</h4>
+        <div class="setting-row">
+          <label>教室背景
+            <input id="modal-bg-file" type="file" accept="image/*" hidden>
+            <button type="button" class="tiny-command" id="btn-bg-file" style="margin-top:4px">选择图片</button>
+            <img id="modal-bg-preview" class="file-preview" style="display:none">
+            <button type="button" class="tiny-command secondary" id="btn-bg-clear" style="display:none;margin-top:4px">使用默认</button>
+          </label>
+          <label>黑板背景
+            <input id="modal-blackboard-file" type="file" accept="image/*" hidden>
+            <button type="button" class="tiny-command" id="btn-blackboard-file" style="margin-top:4px">选择图片</button>
+            <img id="modal-blackboard-preview" class="file-preview" style="display:none">
+            <button type="button" class="tiny-command secondary" id="btn-blackboard-clear" style="display:none;margin-top:4px">使用默认</button>
+          </label>
+        </div>
+        <div class="setting-row">
+          <label>黑板底色（无图时生效）<input id="modal-blackboard-color" type="color" value="#2d4a3e"></label>
+        </div>
+        <div class="setting-row sprite-size-area">
+          <label>
+            黑板缩放
+            <div class="sprite-size-slider-row">
+              <input id="modal-blackboard-scale" type="range" min="0.5" max="1.5" step="0.05" value="1">
+              <span id="modal-blackboard-scale-value" class="sprite-size-value">1.0</span>
+            </div>
+          </label>
+        </div>
+        <div class="setting-row">
+          <label>水平偏移<input id="modal-blackboard-x" type="range" min="-300" max="300" step="10" value="0"></label>
+          <label>垂直偏移<input id="modal-blackboard-y" type="range" min="-200" max="200" step="10" value="0"></label>
+        </div>
+
         <!-- Sprite size -->
         <h4 class="modal-section-title">立绘显示</h4>
         <div class="setting-row sprite-size-area">
@@ -393,6 +483,8 @@
   <script src="AIManager.js"></script>
   <script src="SaveManager.js"></script>
   <script src="TTSManager.js"></script>
+  <script src="MCPClient.js"></script>
+  <script src="Blackboard.js"></script>
   <script src="aiProvider.js"></script>
   <script src="learning.js"></script>
   <script src="LearningState.js"></script>

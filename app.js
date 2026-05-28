@@ -18,8 +18,17 @@ const App = {
       spriteTranslateX: 0,
       spriteTranslateY: 0,
       spriteScale: 1,
+      customBackground: "",
+      customBlackboard: "",
+      blackboardColor: "",
+      blackboardSizeW: 49.4,
+      blackboardSizeH: 50.5,
+      blackboardTranslateX: 0,
+      blackboardTranslateY: 0,
+      blackboardScale: 1,
       ai: { provider: "deepseek", apiKey: "", endpoint: "", model: "deepseek-v4-flash" },
-      voice: { provider: "browser", voiceName: "", rate: 1, pitch: 1.08, volume: 1, autoSpeakDialogue: false, autoSpeakExamples: false }
+      voice: { provider: "browser", voiceName: "", rate: 1, pitch: 1.08, volume: 1, autoSpeakDialogue: false, autoSpeakExamples: false },
+      mcp: { enabled: false, url: "" }
     },
     profile: { affection: 0, level: 1, exp: 0 },
     wordHistory: {},
@@ -83,6 +92,12 @@ const App = {
       modeTabs: byId("mode-tabs"),
       // Learn
       learnContent: byId("learn-content"),
+      learnK1: byId("learn-k1"), learnK2: byId("learn-k2"), learnK3: byId("learn-k3"),
+      k1Prompt: byId("k1-prompt"), btnK1Next: byId("btn-k1-next"),
+      k1CountBtns: byId("k1-count-btns"), k1CountCustomRow: byId("k1-count-custom-row"), k1CountValue: byId("k1-count-value"),
+      k1DifficultyBtns: byId("k1-difficulty-btns"),
+      k2Categories: byId("k2-categories"), btnK2Back: byId("btn-k2-back"), btnK2Next: byId("btn-k2-next"),
+      k3Summary: byId("k3-summary"), btnK3Back: byId("btn-k3-back"), btnK3Collapse: byId("btn-k3-collapse"),
       learnBankLabel: byId("learn-bank-label"), learnRangeLabel: byId("learn-range-label"),
       learnCountLabel: byId("learn-count-label"),
       previewLearned: byId("preview-learned"), previewTotal: byId("preview-total"),
@@ -155,6 +170,15 @@ const App = {
       btnModalClose: byId("btn-modal-close"),
       spriteSizeSlider: byId("modal-sprite-size"), spriteSizeValue: byId("modal-sprite-size-value"),
       spriteSizePresets: byId("modal-sprite-size-presets"),
+      modalBgFile: byId("modal-bg-file"), btnBgFile: byId("btn-bg-file"),
+      modalBgPreview: byId("modal-bg-preview"), btnBgClear: byId("btn-bg-clear"),
+      modalBlackboardFile: byId("modal-blackboard-file"), btnBlackboardFile: byId("btn-blackboard-file"),
+      modalBlackboardPreview: byId("modal-blackboard-preview"), btnBlackboardClear: byId("btn-blackboard-clear"),
+      modalBlackboardColor: byId("modal-blackboard-color"),
+      modalBlackboardScale: byId("modal-blackboard-scale"), modalBlackboardScaleValue: byId("modal-blackboard-scale-value"),
+      modalBlackboardX: byId("modal-blackboard-x"), modalBlackboardY: byId("modal-blackboard-y"),
+      modalMcpEnabled: byId("modal-mcp-enabled"), modalMcpUrl: byId("modal-mcp-url"),
+      btnMcpTest: byId("btn-mcp-test"), mcpToolsList: byId("mcp-tools-list"),
       // Save modal
       saveModal: byId("save-modal"), saveModalTitle: byId("save-modal-title"),
       saveSlotList: byId("save-slot-list"), btnSaveClose: byId("btn-save-close"),
@@ -236,6 +260,21 @@ const App = {
     this.dom.btnModalSave.addEventListener("click", () => this.saveModalSettings());
     this.dom.spriteSizeSlider.addEventListener("input", () => this.handleSpriteSizeChange());
     this.dom.spriteSizePresets.addEventListener("click", (e) => this.handleSpritePresetClick(e));
+    this.dom.modalBlackboardScale?.addEventListener("input", () => this.handleBlackboardScaleChange());
+    this.dom.modalBlackboardX?.addEventListener("input", () => this.handleBlackboardOffsetChange());
+    this.dom.modalBlackboardY?.addEventListener("input", () => this.handleBlackboardOffsetChange());
+    this.dom.btnBgFile?.addEventListener("click", () => this.dom.modalBgFile?.click());
+    this.dom.modalBgFile?.addEventListener("change", (e) => this.handleBgFileSelect(e, "background"));
+    this.dom.btnBgClear?.addEventListener("click", () => this.clearBgFile("background"));
+    this.dom.btnBlackboardFile?.addEventListener("click", () => this.dom.modalBlackboardFile?.click());
+    this.dom.modalBlackboardFile?.addEventListener("change", (e) => this.handleBgFileSelect(e, "blackboard"));
+    this.dom.btnBlackboardClear?.addEventListener("click", () => this.clearBgFile("blackboard"));
+    this.dom.btnMcpTest?.addEventListener("click", () => this.handleMcpTest());
+    this.dom.btnK1Next?.addEventListener("click", () => this.saveK1AndGoToK2());
+    this.dom.btnK2Back?.addEventListener("click", () => this.goToLearnPhase("k1"));
+    this.dom.btnK2Next?.addEventListener("click", () => this.goToLearnPhase("k3"));
+    this.dom.btnK3Back?.addEventListener("click", () => this.goToLearnPhase("k2"));
+    this.dom.btnK3Collapse?.addEventListener("click", () => this.collapseLearnSettings());
 
     // Save modal
     this.dom.btnSaveClose.addEventListener("click", () => this.closeSaveModal());
@@ -268,6 +307,7 @@ const App = {
     this.ensureCharacter();
     this.updateAllCharacterViews();
     LearningState.init(this.state.settings.vocabularyId || "cet4");
+    Blackboard.init();
     this.switchMode("learn");
     this.setDialogue(this.state.character.name, this.state.character.greeting);
   },
@@ -440,7 +480,171 @@ const App = {
     this.renderDifficultyRangePresets();
     this.renderLearnSetupStage();
     this.renderLearnPreview();
-    this.updateLearnCharDialogue("调整好范围，点「开始学习」吧。");
+    this.goToLearnPhase(LearningState.learnPhase);
+  },
+
+  goToLearnPhase(phase) {
+    LearningState.learnPhase = phase;
+    // Hide all phases and k0 content
+    if (this.dom.learnK1) this.dom.learnK1.style.display = "none";
+    if (this.dom.learnK2) this.dom.learnK2.style.display = "none";
+    if (this.dom.learnK3) this.dom.learnK3.style.display = "none";
+    if (this.dom.learnBeforeStart) this.dom.learnBeforeStart.style.display = "none";
+    if (this.dom.learnWordArea) this.dom.learnWordArea.style.display = "none";
+    if (this.dom.learnNavBar) this.dom.learnNavBar.style.display = "none";
+    if (this.dom.btnStartLearning) this.dom.btnStartLearning.style.display = "none";
+    if (this.dom.rangeConfigPanel) this.dom.rangeConfigPanel.style.display = "none";
+    if (this.dom.lessonPlan) this.dom.lessonPlan.style.display = "none";
+
+    if (phase === "k0") {
+      // Show k0 (original learn UI)
+      if (LearningState.inSession) {
+        if (this.dom.learnWordArea) this.dom.learnWordArea.style.display = "";
+        if (this.dom.learnNavBar) this.dom.learnNavBar.style.display = "";
+        this.renderLearnWord();
+      } else {
+        if (this.dom.learnBeforeStart) this.dom.learnBeforeStart.style.display = "";
+        if (this.dom.btnStartLearning) this.dom.btnStartLearning.style.display = "";
+      }
+      this.renderLearnPreview();
+      this.updateLearnCharDialogue("调整好范围，点「开始学习」吧。");
+    } else if (phase === "k1") {
+      this.renderK1();
+    } else if (phase === "k2") {
+      this.renderK2();
+    } else if (phase === "k3") {
+      this.renderK3();
+    }
+  },
+
+  renderK1() {
+    if (this.dom.learnK1) this.dom.learnK1.style.display = "block";
+    if (this.dom.k1Prompt) this.dom.k1Prompt.value = LearningState.userCategoryPrompt || "";
+    this.renderSortModePresets();
+    this._renderK1Counts();
+    this._renderK1Difficulties();
+    this.updateLearnCharDialogue("先选一种排列方式，也可以写个提示词让 AI 帮你分类。");
+  },
+
+  _renderK1Counts() {
+    const container = this.dom.k1CountBtns;
+    if (!container) return;
+    container.innerHTML = "";
+    COUNT_PRESETS.forEach((preset) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = `range-preset-btn${LearningState.countPreset === preset.id ? " active" : ""}`;
+      btn.dataset.preset = preset.id;
+      btn.textContent = preset.label;
+      btn.addEventListener("click", () => {
+        container.querySelectorAll(".range-preset-btn").forEach((b) => b.classList.remove("active"));
+        btn.classList.add("active");
+        if (this.dom.k1CountCustomRow) this.dom.k1CountCustomRow.style.display = preset.id === "custom" ? "" : "none";
+        if (preset.id === "custom" && this.dom.k1CountValue) this.dom.k1CountValue.value = LearningState.learnCount;
+      });
+      container.appendChild(btn);
+    });
+    if (this.dom.k1CountCustomRow) this.dom.k1CountCustomRow.style.display = LearningState.countPreset === "custom" ? "" : "none";
+  },
+
+  _renderK1Difficulties() {
+    const container = this.dom.k1DifficultyBtns;
+    if (!container) return;
+    container.innerHTML = "";
+    DIFFICULTY_RANGE_PRESETS.forEach((preset) => {
+      const active = LearningState.difficultyRange?.id === preset.id || (
+        LearningState.difficultyRange?.min === preset.min && LearningState.difficultyRange?.max === preset.max
+      );
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = `range-preset-btn${active ? " active" : ""}`;
+      btn.dataset.range = preset.id;
+      btn.dataset.min = preset.min;
+      btn.dataset.max = preset.max;
+      btn.textContent = preset.label;
+      btn.addEventListener("click", () => {
+        container.querySelectorAll(".range-preset-btn").forEach((b) => b.classList.remove("active"));
+        btn.classList.add("active");
+      });
+      container.appendChild(btn);
+    });
+  },
+
+  async renderK2() {
+    if (this.dom.learnK2) this.dom.learnK2.style.display = "block";
+    if (this.dom.k2Categories) {
+      this.dom.k2Categories.innerHTML = "<p style='color:var(--chalk-dim)'>AI 正在分类...</p>";
+      const allWords = WordManager.getAllWords?.(LearningState.vocabularyId) || LearningState.rangeWords;
+      const categories = await AIManager.generateWordCategories({
+        words: allWords,
+        vocabularyLabel: LearningState.getVocabularyLabel(),
+        userPrompt: LearningState.userCategoryPrompt,
+        character: this.state.character
+      });
+      this.renderK2Categories(categories);
+    }
+    this.updateLearnCharDialogue("看看这样分类你觉得怎么样？");
+  },
+
+  renderK2Categories(categories) {
+    const container = this.dom.k2Categories;
+    if (!container) return;
+    if (!categories || categories.length === 0) {
+      container.innerHTML = "<p style='color:var(--chalk-dim)'>暂无分类结果</p>";
+      return;
+    }
+    container.innerHTML = "";
+    categories.forEach((cat) => {
+      const div = document.createElement("div");
+      div.className = "k2-category-card";
+      div.innerHTML = `<div class="k2-cat-name">${cat.name}</div><div class="k2-cat-words">${cat.words.slice(0, 8).join("、")}${cat.words.length > 8 ? "..." : ""}</div>`;
+      container.appendChild(div);
+    });
+  },
+
+  saveK1AndGoToK2() {
+    // Save sort mode
+    const sortActive = this.dom.sortModeBtns?.querySelector(".range-preset-btn.active");
+    LearningState.setSortMode(sortActive?.dataset?.sort || "frequency");
+    // Save prompt
+    LearningState.userCategoryPrompt = this.dom.k1Prompt?.value || "";
+    // Save count
+    const countActive = this.dom.k1CountBtns?.querySelector(".range-preset-btn.active");
+    const countPresetId = countActive?.dataset?.preset || "20";
+    const customCount = parseInt(this.dom.k1CountValue?.value) || 20;
+    LearningState.setCountPreset(countPresetId, customCount);
+    // Save difficulty
+    const diffActive = this.dom.k1DifficultyBtns?.querySelector(".range-preset-btn.active");
+    LearningState.setDifficultyRange({
+      id: diffActive?.dataset?.range || "all",
+      min: Number(diffActive?.dataset?.min || 1),
+      max: Number(diffActive?.dataset?.max || 5)
+    });
+    this.goToLearnPhase("k2");
+  },
+
+  renderK3() {
+    if (this.dom.learnK3) this.dom.learnK3.style.display = "block";
+    const summary = this.dom.k3Summary;
+    if (summary) {
+      summary.innerHTML = `
+        <div class="k3-row"><span>词库</span><span>${LearningState.getVocabularyLabel()}</span></div>
+        <div class="k3-row"><span>排列方式</span><span>${LearningState.sortMode === "frequency" ? "高频优先" : LearningState.sortMode === "az" ? "A-Z" : "顺序"}</span></div>
+        <div class="k3-row"><span>本次词数</span><span>${LearningState.learnCount} 词</span></div>
+        <div class="k3-row"><span>难度范围</span><span>${LearningState.difficultyRange.min}-${LearningState.difficultyRange.max} 星</span></div>
+      `;
+    }
+    this.updateLearnCharDialogue("确认好了就点「收起并开始」，我会帮你存档。");
+  },
+
+  collapseLearnSettings() {
+    // Apply range config first
+    this.applyRangeConfig();
+    // Auto save
+    SaveManager.autoSave(this.state, LearningState);
+    // Enter k0 session
+    LearningState.learnPhase = "k0";
+    this.beginLearnSession();
   },
 
   /* ── Range config ── */
@@ -575,15 +779,20 @@ const App = {
   },
 
   toggleRangeConfig() {
-    const panel = this.dom.rangeConfigPanel;
-    const shown = panel.style.display !== "none";
-    panel.style.display = shown ? "none" : "";
-    if (!shown) {
-      LearningState.setupStage = LearningState.setupStage === "session" ? "range" : (LearningState.setupStage || "sort");
-      this.renderSortModePresets();
-      this.renderCountPresets();
-      this.renderDifficultyRangePresets();
-      this.renderLearnSetupStage();
+    if (LearningState.inSession || LearningState.learnPhase === "k0") {
+      LearningState.learnPhase = "k1";
+      this.goToLearnPhase("k1");
+    } else {
+      const panel = this.dom.rangeConfigPanel;
+      const shown = panel.style.display !== "none";
+      panel.style.display = shown ? "none" : "";
+      if (!shown) {
+        LearningState.setupStage = LearningState.setupStage === "session" ? "range" : (LearningState.setupStage || "sort");
+        this.renderSortModePresets();
+        this.renderCountPresets();
+        this.renderDifficultyRangePresets();
+        this.renderLearnSetupStage();
+      }
     }
   },
 
@@ -671,14 +880,14 @@ const App = {
 
   /* ── Session ── */
 
-  beginLearnSession() {
+  async beginLearnSession() {
     LearningState.enterLearn();
     this.renderLearnWord();
     this.renderLearnPreview();
     this.updateHintProgress();
     const word = LearningState.getCurrentWord();
     if (word) {
-      this.setLearnCharacterDialogue(word);
+      await this.setLearnCharacterDialogue(word);
     }
   },
 
@@ -768,14 +977,19 @@ const App = {
     if (this.dom.learnCharDialogue) this.dom.learnCharDialogue.textContent = text || "";
   },
 
-  setLearnCharacterDialogue(word) {
+  async setLearnCharacterDialogue(word) {
     if (!word) return;
     const state = LearningState.getWordState(this.state.wordHistory, word);
     const record = this.state.wordHistory[word.english.toLowerCase()];
     const wrongCount = record?.wrongCount || 0;
 
     let dialogue;
-    if (state === "new") {
+    if (this.state.settings.aiMode && AIManager.isOnline()) {
+      dialogue = await AIManager.generateWordAdvice({
+        word: word.english, meaning: word.chinese, character: this.state.character,
+        example: word.example, wordHistory: this.state.wordHistory
+      });
+    } else if (state === "new") {
       dialogue = AIManager.makeCharacterComment({
         word: word.english, meaning: word.chinese, character: this.state.character, example: word.example
       });
@@ -962,7 +1176,7 @@ const App = {
      CONVERSATION MODE
      ════════════════════════════════════════════════ */
 
-  startConversation() {
+  async startConversation() {
     if (!this.state.conversation.currentWord) {
       this.pickConversationWord();
     }
@@ -972,7 +1186,20 @@ const App = {
     } else {
       this.renderConversationHistory();
     }
-    this.setDialogue(this.state.character.name, "来，用今天学的词和我说说话。");
+
+    // AI proactively sends first message if online
+    const word = this.state.conversation.currentWord;
+    if (this.state.settings.aiMode && AIManager.isOnline() && word) {
+      this.setDialogue(this.state.character.name, "...");
+      const firstMsg = await AIManager.generateConversationFirstMessage({
+        character: this.state.character, word
+      });
+      LearningState.addConversationEntry("character", firstMsg);
+      this.renderConversationHistory();
+      this.setDialogue(this.state.character.name, firstMsg);
+    } else {
+      this.setDialogue(this.state.character.name, "来，用今天学的词和我说说话。");
+    }
   },
 
   pickConversationWord() {
@@ -1381,6 +1608,17 @@ const App = {
     this.dom.spriteSizeValue.textContent = this.state.settings.spriteSize;
     this.updateActiveSpritePreset(this.state.settings.spriteSize);
     this.updateVoiceOptions();
+    this._updateFilePreview("background", this.state.settings.customBackground);
+    this._updateFilePreview("blackboard", this.state.settings.customBlackboard);
+    if (this.dom.modalBlackboardColor) this.dom.modalBlackboardColor.value = this.state.settings.blackboardColor || "#2d4a3e";
+    if (this.dom.modalBlackboardScale) {
+      this.dom.modalBlackboardScale.value = this.state.settings.blackboardScale || 1;
+      this.dom.modalBlackboardScaleValue.textContent = (this.state.settings.blackboardScale || 1).toFixed(1);
+    }
+    if (this.dom.modalBlackboardX) this.dom.modalBlackboardX.value = this.state.settings.blackboardTranslateX || 0;
+    if (this.dom.modalBlackboardY) this.dom.modalBlackboardY.value = this.state.settings.blackboardTranslateY || 0;
+    if (this.dom.modalMcpEnabled) this.dom.modalMcpEnabled.checked = this.state.settings.mcp?.enabled || false;
+    if (this.dom.modalMcpUrl) this.dom.modalMcpUrl.value = this.state.settings.mcp?.url || "";
     this.dom.settingsModal.classList.add("active");
     this.dom.settingsModal.setAttribute("aria-hidden", "false");
   },
@@ -1439,6 +1677,18 @@ const App = {
     LearningState.setVocabulary(vocabId);
 
     this.applyModalVoiceToState(false);
+
+    // customBackground / customBlackboard already set by file handlers
+    this.state.settings.blackboardColor = this.dom.modalBlackboardColor?.value || "";
+    this.state.settings.blackboardScale = Number(this.dom.modalBlackboardScale?.value || 1);
+    this.state.settings.blackboardTranslateX = Number(this.dom.modalBlackboardX?.value || 0);
+    this.state.settings.blackboardTranslateY = Number(this.dom.modalBlackboardY?.value || 0);
+    this.state.settings.mcp = {
+      enabled: this.dom.modalMcpEnabled?.checked || false,
+      url: this.dom.modalMcpUrl?.value || ""
+    };
+    Blackboard.update(this.state.settings);
+
     this.ensureCharacter();
     this.updateAllCharacterViews();
     this.renderCharacterSelection(this.dom.characterGrid, this.state.settings.characterId);
@@ -1474,6 +1724,89 @@ const App = {
     });
   },
 
+  handleBlackboardScaleChange() {
+    const scale = Number(this.dom.modalBlackboardScale.value);
+    this.state.settings.blackboardScale = scale;
+    this.dom.modalBlackboardScaleValue.textContent = scale.toFixed(1);
+    Blackboard.update(this.state.settings);
+  },
+
+  handleBlackboardOffsetChange() {
+    this.state.settings.blackboardTranslateX = Number(this.dom.modalBlackboardX.value || 0);
+    this.state.settings.blackboardTranslateY = Number(this.dom.modalBlackboardY.value || 0);
+    Blackboard.update(this.state.settings);
+  },
+
+  handleBgFileSelect(event, type) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    if (file.size > 3 * 1024 * 1024) {
+      alert("图片太大，请选择小于 3MB 的图片");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const dataUrl = e.target.result;
+      if (type === "background") {
+        this.state.settings.customBackground = dataUrl;
+      } else {
+        this.state.settings.customBlackboard = dataUrl;
+      }
+      this._updateFilePreview(type, dataUrl);
+      Blackboard.update(this.state.settings);
+    };
+    reader.readAsDataURL(file);
+  },
+
+  clearBgFile(type) {
+    if (type === "background") {
+      this.state.settings.customBackground = "";
+      if (this.dom.modalBgFile) this.dom.modalBgFile.value = "";
+    } else {
+      this.state.settings.customBlackboard = "";
+      if (this.dom.modalBlackboardFile) this.dom.modalBlackboardFile.value = "";
+    }
+    this._updateFilePreview(type, "");
+    Blackboard.update(this.state.settings);
+  },
+
+  _updateFilePreview(type, dataUrl) {
+    const isBg = type === "background";
+    const preview = isBg ? this.dom.modalBgPreview : this.dom.modalBlackboardPreview;
+    const clearBtn = isBg ? this.dom.btnBgClear : this.dom.btnBlackboardClear;
+    const fileBtn = isBg ? this.dom.btnBgFile : this.dom.btnBlackboardFile;
+    if (!preview || !clearBtn || !fileBtn) return;
+    if (dataUrl) {
+      preview.src = dataUrl;
+      preview.style.display = "block";
+      clearBtn.style.display = "inline-block";
+      fileBtn.textContent = "更换图片";
+    } else {
+      preview.style.display = "none";
+      preview.src = "";
+      clearBtn.style.display = "none";
+      fileBtn.textContent = "选择图片";
+    }
+  },
+
+  async handleMcpTest() {
+    const url = this.dom.modalMcpUrl?.value;
+    if (!url) {
+      this.setDialogue("系统", "请先输入 MCP 服务器地址。");
+      return;
+    }
+    this.setDialogue("系统", "正在连接 MCP 服务器...");
+    const result = await MCPClient.connect(url);
+    if (result.ok) {
+      this.dom.mcpToolsList.style.display = "block";
+      this.dom.mcpToolsList.innerHTML = `<small>已连接，发现 ${result.tools.length} 个工具</small>`;
+      this.setDialogue("系统", `MCP 连接成功。发现 ${result.tools.length} 个可用工具。`);
+    } else {
+      this.dom.mcpToolsList.style.display = "none";
+      this.setDialogue("系统", `MCP 连接失败：${result.error}`);
+    }
+  },
+
   /* ════════════════════════════════════════════════
      DATA
      ════════════════════════════════════════════════ */
@@ -1499,6 +1832,7 @@ const App = {
       this.state.settings.spriteTranslateX = this.state.settings.spriteTranslateX || 0;
       this.state.settings.spriteTranslateY = this.state.settings.spriteTranslateY || 0;
       this.state.settings.spriteScale = this.state.settings.spriteScale || 1;
+      this.state.settings.mcp = { enabled: false, url: "", ...(this.state.settings.mcp || {}) };
       if (ls) window.__pendingLearningState = JSON.parse(ls);
       AIManager.setConfig(this.state.settings.ai);
       WordManager.setVocabulary(this.state.settings.vocabularyId || "cet4");

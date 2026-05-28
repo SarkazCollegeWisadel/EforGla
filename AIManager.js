@@ -72,6 +72,45 @@ const AIManager = {
     ].join("\n");
   },
 
+  async generateWordCategories({ words, vocabularyLabel, userPrompt, character }) {
+    if (this.isOnline() && words.length > 0) {
+      try {
+        const name = character?.name || "角色";
+        const personality = character?.personality || "";
+        const wordList = words.slice(0, 50).map((w) => `${w.english}(${w.chinese})`).join("、");
+        const promptContext = userPrompt ? `用户自定义分类要求：${userPrompt}` : "请按主题/场景/词性等自然维度分类";
+        const messages = [
+          {
+            role: "system",
+            content: `你是 Galgame 英语学习应用中的角色「${name}」。性格：${personality}。你正在帮学生整理词库分类。用中文回复，保持角色语气。`
+          },
+          {
+            role: "user",
+            content: `词库「${vocabularyLabel}」共 ${words.length} 个词，前50个：${wordList}。${promptContext}。请将这组词分成 3-6 个类别，每个类别给出一个简短的名字（4-8字）和包含的词列表。用 JSON 格式返回：{"categories":[{"name":"类别名","words":["word1","word2"]}]}。只返回 JSON，不要其他内容。`
+          }
+        ];
+        const result = await AIProvider.chat(messages);
+        if (result?.content) {
+          const jsonMatch = result.content.match(/\{[\s\S]*\}/);
+          if (jsonMatch) {
+            const parsed = JSON.parse(jsonMatch[0]);
+            if (parsed.categories) return parsed.categories;
+          }
+        }
+      } catch (e) {
+        console.warn("[AIManager] Word category generation failed", e);
+      }
+    }
+    // Offline fallback: group by first letter
+    const groups = {};
+    words.forEach((w) => {
+      const key = w.english[0].toUpperCase();
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(w.english);
+    });
+    return Object.entries(groups).slice(0, 6).map(([name, list]) => ({ name: `字母 ${name}`, words: list.slice(0, 10) }));
+  },
+
   /* ════════════════════════════════════════════════
      PROGRESSIVE CHARACTER HINTS — Level 0 → 3
      ════════════════════════════════════════════════ */
@@ -185,6 +224,43 @@ const AIManager = {
   },
 
   /* ════════════════════════════════════════════════
+     WORD ADVICE — AI-generated personalized opening
+     ════════════════════════════════════════════════ */
+
+  async generateWordAdvice({ word, meaning, character, example, wordHistory }) {
+    if (this.isOnline()) {
+      try {
+        const name = character?.name || "角色";
+        const personality = character?.personality || "";
+        const history = wordHistory || {};
+        const record = history[word?.toLowerCase?.()];
+        const wrongCount = record?.wrongCount || 0;
+        const isNew = !record;
+        const context = [
+          isNew ? "这是学生第一次学这个词。" : `学生已经学过这个词，之前错过 ${wrongCount} 次。`,
+          example ? `例句：${example}` : ""
+        ].filter(Boolean).join(" ");
+
+        const messages = [
+          {
+            role: "system",
+            content: `你是 Galgame 英语学习应用中的角色「${name}」。性格：${personality}。你正在教室里陪学生学英语。用中文回复，保持角色语气，温柔、简短（1-3句话），像老师在黑板边轻声讲解。`
+          },
+          {
+            role: "user",
+            content: `今天的单词是「${word}」（${meaning}）。${context}请给出一个个性化的学习建议或开场白，帮助学生记住这个词。不要列点，像聊天一样自然。`
+          }
+        ];
+        const result = await AIProvider.chat(messages);
+        if (result?.content) return result.content;
+      } catch (e) {
+        console.warn("[AIManager] Word advice generation failed", e);
+      }
+    }
+    return this.makeCharacterComment({ word, meaning, character, example });
+  },
+
+  /* ════════════════════════════════════════════════
      MEMORY TIPS
      ════════════════════════════════════════════════ */
 
@@ -197,6 +273,30 @@ const AIManager = {
   /* ════════════════════════════════════════════════
      CONVERSATION — AI sentence practice
      ════════════════════════════════════════════════ */
+
+  async generateConversationFirstMessage({ character, word }) {
+    if (this.isOnline()) {
+      try {
+        const name = character?.name || "角色";
+        const personality = character?.personality || "温柔陪伴";
+        const messages = [
+          {
+            role: "system",
+            content: `你是 Galgame 英语学习应用中的角色「${name}」。性格：${personality}。你正在教室里，准备和学生用「${word?.english || ""}」练习英语对话。用中文回复，保持角色语气，简短（1-2句话），自然地引导学生开始造句。`
+          },
+          {
+            role: "user",
+            content: `请用「${word?.english || ""}」(${word?.chinese || ""}) 给我一个开场，引导学生开始造句练习。可以是一个简单的问题、一个示范句子，或一个场景提示。`
+          }
+        ];
+        const result = await AIProvider.chat(messages);
+        if (result?.content) return result.content;
+      } catch (e) {
+        console.warn("[AIManager] Conversation first message failed", e);
+      }
+    }
+    return `今天我们来练习「${word?.english || ""}」。试着用它造一个句子？`;
+  },
 
   async generateConversationReply({ character, word, userInput, history }) {
     const name = character?.name || "角色";
