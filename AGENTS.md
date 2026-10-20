@@ -256,7 +256,7 @@ AI 和 TTS 均采用 **Provider 模式**，便于扩展：
 
 ## 测试策略
 
-**本项目没有自动化测试框架**（无 Jest、Mocha、Vitest 等）。
+**本项目使用 Node.js 内置测试运行器**，无需安装测试依赖：`node --test tests/regression.test.cjs`。浏览器端仍为零依赖、无构建步骤。
 
 测试方式：
 1. 在浏览器中直接运行
@@ -281,7 +281,7 @@ AI 和 TTS 均采用 **Provider 模式**，便于扩展：
 
 ## 安全注意事项
 
-- **API Key 仅保存在浏览器 `localStorage` 中，不会上传至任何服务器**
+- **API Key 保存在浏览器 `localStorage` 中，在线请求发送至配置的 AI 端点进行认证；存档及导出不包含 Key**
 - 不要在代码中硬编码真实 API Key
 - `.gitignore` 已配置忽略常见敏感文件：`*_keys.json`、`*_secret.json`、`credentials.json`、`secrets.json`、`.env`
 - Tavern 角色卡导入仅接受 `.json` 文件，解析时清理 `\uFFFD` 乱码和 `{{user}}` 标记

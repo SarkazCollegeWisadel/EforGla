@@ -258,6 +258,11 @@ const App = {
       TTSManager.speak("这是当前的语音试听。今天的颜色很亮。", this.state.settings.voice);
     });
     this.dom.btnModalSave.addEventListener("click", () => this.saveModalSettings());
+    this.dom.modalAiProvider.addEventListener("change", () => {
+      const config = PROVIDER_CONFIG[this.dom.modalAiProvider.value] || {};
+      this.dom.modalAiEndpoint.value = config.defaultEndpoint || "";
+      this.dom.modalAiModel.value = config.defaultModel || "";
+    });
     this.dom.spriteSizeSlider.addEventListener("input", () => this.handleSpriteSizeChange());
     this.dom.spriteSizePresets.addEventListener("click", (e) => this.handleSpritePresetClick(e));
     this.dom.modalBlackboardScale?.addEventListener("input", () => this.handleBlackboardScaleChange());
@@ -306,7 +311,9 @@ const App = {
   onEnterMain() {
     this.ensureCharacter();
     this.updateAllCharacterViews();
-    LearningState.init(this.state.settings.vocabularyId || "cet4");
+    if (LearningState.vocabularyId !== this.state.settings.vocabularyId) {
+      LearningState.setVocabulary(this.state.settings.vocabularyId || "cet4");
+    }
     Blackboard.init();
     this.switchMode("learn");
     this.setDialogue(this.state.character.name, this.state.character.greeting);
@@ -334,10 +341,10 @@ const App = {
       card.dataset.id = c.id;
       card.style.setProperty("--theme", c.theme?.primary || "#88bff2");
       card.innerHTML = `
-        <div class="character-avatar">${c.avatar || c.name.slice(0, 1)}</div>
-        <div class="character-name">${c.name}</div>
-        <div class="character-title">${c.title}</div>
-        <div class="character-desc">${this.shortText(c.personality || c.scenario, 54)}</div>`;
+        <div class="character-avatar">${this.escapeHtml(c.avatar || c.name.slice(0, 1))}</div>
+        <div class="character-name">${this.escapeHtml(c.name)}</div>
+        <div class="character-title">${this.escapeHtml(c.title)}</div>
+        <div class="character-desc">${this.escapeHtml(this.shortText(c.personality || c.scenario, 54))}</div>`;
       container.appendChild(card);
     });
   },
@@ -479,7 +486,7 @@ const App = {
     this.renderCountPresets();
     this.renderDifficultyRangePresets();
     this.renderLearnSetupStage();
-    this.renderLearnPreview();
+    this.renderLearnPreview(false);
     this.goToLearnPhase(LearningState.learnPhase);
   },
 
@@ -501,13 +508,12 @@ const App = {
       if (LearningState.inSession) {
         if (this.dom.learnWordArea) this.dom.learnWordArea.style.display = "";
         if (this.dom.learnNavBar) this.dom.learnNavBar.style.display = "";
-        this.renderLearnWord();
       } else {
         if (this.dom.learnBeforeStart) this.dom.learnBeforeStart.style.display = "";
         if (this.dom.btnStartLearning) this.dom.btnStartLearning.style.display = "";
       }
       this.renderLearnPreview();
-      this.updateLearnCharDialogue("调整好范围，点「开始学习」吧。");
+      if (!LearningState.inSession) this.updateLearnCharDialogue("调整好范围，点「开始学习」吧。");
     } else if (phase === "k1") {
       this.renderK1();
     } else if (phase === "k2") {
@@ -597,7 +603,7 @@ const App = {
     categories.forEach((cat) => {
       const div = document.createElement("div");
       div.className = "k2-category-card";
-      div.innerHTML = `<div class="k2-cat-name">${cat.name}</div><div class="k2-cat-words">${cat.words.slice(0, 8).join("、")}${cat.words.length > 8 ? "..." : ""}</div>`;
+      div.innerHTML = `<div class="k2-cat-name">${this.escapeHtml(cat.name)}</div><div class="k2-cat-words">${this.escapeHtml(cat.words.slice(0, 8).join("、"))}${cat.words.length > 8 ? "..." : ""}</div>`;
       container.appendChild(div);
     });
   },
@@ -638,13 +644,11 @@ const App = {
   },
 
   collapseLearnSettings() {
-    // Apply range config first
-    this.applyRangeConfig();
-    // Auto save
-    SaveManager.autoSave(this.state, LearningState);
-    // Enter k0 session
+    // K1 已保存选项，不再读取旧版范围控件覆盖本次设置。
+    this.generateLessonPlan();
     LearningState.learnPhase = "k0";
     this.beginLearnSession();
+    this.saveData();
   },
 
   /* ── Range config ── */
@@ -847,7 +851,7 @@ const App = {
 
   /* ── Preview ── */
 
-  renderLearnPreview() {
+  renderLearnPreview(updateWord = true) {
     const stats = LearningState.getSessionStats(this.state.wordHistory);
     this.dom.previewLearned.textContent = stats.learned;
     this.dom.previewTotal.textContent = stats.total;
@@ -859,7 +863,7 @@ const App = {
       const item = document.createElement("div");
       item.className = `preview-word-item${i === LearningState.currentIndex ? " active" : ""}${state === "mastered" ? " mastered" : state === "learning" || state === "familiar" ? " learning" : ""}`;
       item.dataset.index = i;
-      item.innerHTML = `<span class="preview-word-indicator"></span><span class="preview-word-text">${word.english}</span>`;
+      item.innerHTML = `<span class="preview-word-indicator"></span><span class="preview-word-text">${this.escapeHtml(word.english)}</span>`;
       item.addEventListener("click", () => {
         if (LearningState.isInSession()) {
           LearningState.currentIndex = i;
@@ -875,20 +879,15 @@ const App = {
     if (this.dom.btnLearnHint) this.dom.btnLearnHint.style.display = LearningState.isInSession() ? "" : "none";
     if (this.dom.learnHintProgress) this.dom.learnHintProgress.style.display = LearningState.isInSession() ? "" : "none";
 
-    if (LearningState.isInSession()) this.renderLearnWord();
+    if (updateWord && LearningState.isInSession()) this.renderLearnWord();
   },
 
   /* ── Session ── */
 
   async beginLearnSession() {
     LearningState.enterLearn();
-    this.renderLearnWord();
-    this.renderLearnPreview();
+    this.goToLearnPhase("k0");
     this.updateHintProgress();
-    const word = LearningState.getCurrentWord();
-    if (word) {
-      await this.setLearnCharacterDialogue(word);
-    }
   },
 
   renderLearnWord() {
@@ -964,7 +963,6 @@ const App = {
     LearningState.markLearned(this.state.wordHistory, word);
     this.addExp(EXP_CONFIG.expPerWord);
     this.addAffection(AFFECTION_CONFIG.perWordLearn);
-    this.renderLearnWord();
     this.renderLearnPreview();
     this.saveData();
     this.setDialogue(this.state.character.name, `「${word.english}」记下了。`);
@@ -979,6 +977,7 @@ const App = {
 
   async setLearnCharacterDialogue(word) {
     if (!word) return;
+    const requestId = this.learnDialogueRequestId = (this.learnDialogueRequestId || 0) + 1;
     const state = LearningState.getWordState(this.state.wordHistory, word);
     const record = this.state.wordHistory[word.english.toLowerCase()];
     const wrongCount = record?.wrongCount || 0;
@@ -998,6 +997,7 @@ const App = {
     } else {
       dialogue = `「${word.english}」还记得吗？是「${word.chinese}」。${word.example ? `像这句：${word.example}` : ""}`;
     }
+    if (requestId !== this.learnDialogueRequestId || LearningState.getCurrentWord() !== word) return;
     this.updateLearnCharDialogue(dialogue);
 
     if (this.state.settings.voice.autoSpeakDialogue) {
@@ -1006,6 +1006,8 @@ const App = {
   },
 
   advanceLearnHint() {
+    // 后返回的 AI 讲解不得覆盖用户刚展开的提示。
+    this.learnDialogueRequestId = (this.learnDialogueRequestId || 0) + 1;
     const level = LearningState.advanceHint();
     if (level === null) return;
 
@@ -1222,7 +1224,7 @@ const App = {
     if (!word) {
       this.dom.convWord.innerHTML = "—";
     } else {
-      this.dom.convWord.innerHTML = `${word.english} <span class="conv-word-meaning">${word.chinese}</span>`;
+      this.dom.convWord.innerHTML = `${this.escapeHtml(word.english)} <span class="conv-word-meaning">${this.escapeHtml(word.chinese)}</span>`;
     }
   },
 
@@ -1233,7 +1235,7 @@ const App = {
       const div = document.createElement("div");
       div.className = `conv-message ${entry.role === "character" ? "character" : "user"}`;
       const sender = entry.role === "character" ? this.state.character?.name || "角色" : "你";
-      div.innerHTML = `<span class="conv-msg-sender">${sender}</span>${entry.text}`;
+      div.innerHTML = `<span class="conv-msg-sender">${this.escapeHtml(sender)}</span>${this.escapeHtml(entry.text)}`;
       log.appendChild(div);
     });
     log.scrollTop = log.scrollHeight;
@@ -1371,6 +1373,7 @@ const App = {
   showReviewWord() {
     const word = LearningState.getCurrentReviewWord();
     if (!word) { this.finishReview(); return; }
+    this.state.test.answered = false;
     this.dom.testWordDisplay.textContent = word.english;
     this.dom.testPhonetic.textContent = word.phonetic || "";
     this.dom.testInput.value = "";
@@ -1383,9 +1386,10 @@ const App = {
 
   checkTestAnswer() {
     const word = LearningState.getCurrentReviewWord();
-    if (!word) return;
+    if (!word || this.state.test.answered) return;
     const answer = this.dom.testInput.value.trim();
     if (!answer) return;
+    this.state.test.answered = true;
 
     const correct = checkChineseAnswer(answer, word.chinese);
     this.dom.testInputContainer.style.display = "none";
@@ -1406,7 +1410,7 @@ const App = {
       this.addExp(EXP_CONFIG.expPerTestCorrect);
       this.addAffection(AFFECTION_CONFIG.perTestCorrect);
       this.dom.testResult.innerHTML = `
-        对了。${word.english} 的颜色已经留下来了。<br>
+        对了。${this.escapeHtml(word.english)} 的颜色已经留下来了。<br>
         <span class="next-review">下次复习：${WordManager.getNextReviewText(this.state.wordHistory[key])}</span><br>
         <button class="chalk-choice next-review" id="btn-next-test">下一题</button>`;
       this.setDialogue(this.state.character.name, "对了。线条很稳。");
@@ -1414,7 +1418,7 @@ const App = {
       this.state.test.wrong++;
       this.addAffection(AFFECTION_CONFIG.perWrong);
       this.dom.testResult.innerHTML = `
-        还差一点。你写的是「${answer}」，正确是「${word.chinese}」。<br>
+        还差一点。你写的是「${this.escapeHtml(answer)}」，正确是「${this.escapeHtml(word.chinese)}」。<br>
         <span class="next-review">${WordManager.getNextReviewText(this.state.wordHistory[key])} 再复习一次</span><br>
         <button class="chalk-choice next-review" id="btn-next-test">下一题</button>`;
       this.setDialogue(this.state.character.name, `没关系。${word.english} 现在是浅灰色。我们再给它加一层记忆。`);
@@ -1513,7 +1517,10 @@ const App = {
   },
 
   doSave(index) {
-    SaveManager.save(index, this.state, LearningState);
+    if (!SaveManager.save(index, this.state, LearningState)) {
+      this.setDialogue("系统", "存档写入失败，请检查浏览器存储空间。");
+      return;
+    }
     this.saveData();
     this.renderSaveSlots();
     this.setDialogue("系统", `存档已保存到位置 ${index + 1}。`);
@@ -1522,8 +1529,13 @@ const App = {
   doLoad(index) {
     const data = SaveManager.load(index);
     if (!data) return;
-    SaveManager.restoreToState(data, this.state);
+    if (!SaveManager.restoreToState(data, this.state)) return;
     if (data.learningState) LearningState.deserialize(data.learningState);
+    AIManager.setConfig(this.state.settings.ai);
+    WordManager.setVocabulary(this.state.settings.vocabularyId);
+    Blackboard.update(this.state.settings);
+    this.state.conversation.currentWord = null;
+    LearningState.endConversation();
     this.ensureCharacter();
     this.updateAllCharacterViews();
     this.renderCharacterSelection(this.dom.characterGrid, this.state.settings.characterId);
@@ -1538,7 +1550,10 @@ const App = {
   },
 
   doDelete(index) {
-    SaveManager.deleteSlot(index);
+    if (!SaveManager.deleteSlot(index)) {
+      this.setDialogue("系统", "存档删除失败，请检查浏览器存储权限。");
+      return;
+    }
     this.renderSaveSlots();
     this.setDialogue("系统", `存档位 ${index + 1} 已删除。`);
   },
@@ -1840,12 +1855,19 @@ const App = {
   },
 
   saveData(showToast) {
-    localStorage.setItem("galgameEnglish_settings", JSON.stringify(this.state.settings));
-    localStorage.setItem("galgameEnglish_profile", JSON.stringify(this.state.profile));
-    localStorage.setItem("galgameEnglish_wordHistory", JSON.stringify(this.state.wordHistory));
-    localStorage.setItem("galgameEnglish_learningState", JSON.stringify(LearningState.serialize()));
-    SaveManager.autoSave(this.state, LearningState);
-    if (showToast) this.setDialogue("系统", "存档已保存。");
+    try {
+      localStorage.setItem("galgameEnglish_settings", JSON.stringify(this.state.settings));
+      localStorage.setItem("galgameEnglish_profile", JSON.stringify(this.state.profile));
+      localStorage.setItem("galgameEnglish_wordHistory", JSON.stringify(this.state.wordHistory));
+      localStorage.setItem("galgameEnglish_learningState", JSON.stringify(LearningState.serialize()));
+      if (!SaveManager.autoSave(this.state, LearningState)) throw new Error("自动存档写入失败");
+      if (showToast) this.setDialogue("系统", "存档已保存。");
+      return true;
+    } catch (error) {
+      console.warn("[App] 数据保存失败", error);
+      this.setDialogue("系统", "数据保存失败，请检查浏览器存储空间；当前进度仍保留在本页。");
+      return false;
+    }
   },
 
   /* ════════════════════════════════════════════════
@@ -1881,6 +1903,12 @@ const App = {
   /* ════════════════════════════════════════════════
      UTIL
      ════════════════════════════════════════════════ */
+
+  escapeHtml(value) {
+    return String(value ?? "").replace(/[&<>"']/g, (char) => ({
+      "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+    })[char]);
+  },
 
   shortText(text, max) {
     const clean = String(text || "").replace(/\s+/g, " ").trim();

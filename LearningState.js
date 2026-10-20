@@ -64,6 +64,7 @@ const LearningState = {
 
   setVocabulary(vocabularyId) {
     if (!VOCABULARY_BANKS[vocabularyId]) return;
+    if (this.vocabularyId === vocabularyId) return;
     this.vocabularyId = vocabularyId;
     this.difficulty = BANK_TO_DIFFICULTY[vocabularyId] || "medium";
     this.setupStage = "sort";
@@ -124,7 +125,7 @@ const LearningState = {
   /* ── Quantity ── */
 
   setLearnCount(count) {
-    this.learnCount = Math.min(count, this.rangeWords.length);
+    this.learnCount = Math.max(1, Math.floor(Number(count) || 20));
     const preset = COUNT_PRESETS.find((p) => p.value === count);
     this.countPreset = preset ? preset.id : "custom";
   },
@@ -134,9 +135,9 @@ const LearningState = {
     if (!preset) return;
     this.countPreset = presetId;
     if (presetId === "custom") {
-      this.learnCount = Math.min(customValue || 20, this.rangeWords.length);
+      this.setLearnCount(customValue);
     } else {
-      this.learnCount = Math.min(preset.value, this.rangeWords.length);
+      this.setLearnCount(preset.value);
     }
   },
 
@@ -527,6 +528,7 @@ const LearningState = {
       userCategoryPrompt: this.userCategoryPrompt,
       currentIndex: this.currentIndex,
       inSession: this.inSession,
+      sessionWords: this.rangeWords.map((word) => word.english),
       conversationHistory: this.conversationHistory.slice(-200),
       lessonPlan: this.lessonPlan
     };
@@ -552,6 +554,12 @@ const LearningState = {
     this.inSession = data.inSession ?? false;
     this.conversationHistory = data.conversationHistory || [];
     this.lessonPlan = data.lessonPlan || null;
+    const savedIndex = this.currentIndex;
     this.loadRange();
+    const sessionWords = data.sessionWords || this.lessonPlan?.words;
+    if (Array.isArray(sessionWords)) {
+      this.rangeWords = WordManager.getWordsByIds(this.vocabularyId, sessionWords);
+      this.currentIndex = Math.max(0, Math.min(savedIndex, this.rangeWords.length - 1));
+    }
   }
 };

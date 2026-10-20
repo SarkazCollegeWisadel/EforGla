@@ -15,7 +15,7 @@ const AIManager = {
 
   setConfig(config = {}) {
     this.config = { ...this.config, ...config };
-    if (window.AIProvider) {
+    if (typeof AIProvider !== "undefined") {
       AIProvider.setConfig(this.config);
     }
   },
@@ -94,7 +94,13 @@ const AIManager = {
           const jsonMatch = result.content.match(/\{[\s\S]*\}/);
           if (jsonMatch) {
             const parsed = JSON.parse(jsonMatch[0]);
-            if (parsed.categories) return parsed.categories;
+            if (Array.isArray(parsed.categories)) {
+              const categories = parsed.categories.filter((cat) =>
+                cat && typeof cat.name === "string" && Array.isArray(cat.words) &&
+                cat.words.every((word) => typeof word === "string")
+              );
+              if (categories.length > 0) return categories;
+            }
           }
         }
       } catch (e) {
@@ -303,7 +309,10 @@ const AIManager = {
     const personality = character?.personality || "温柔陪伴";
     const systemPrompt = character?.systemPrompt || "";
 
-    const contextMessages = (history || []).slice(-6).map((h) => ({
+    const previousHistory = [...(history || [])];
+    const lastEntry = previousHistory[previousHistory.length - 1];
+    if (lastEntry?.role === "user" && lastEntry.text === userInput) previousHistory.pop();
+    const contextMessages = previousHistory.slice(-6).map((h) => ({
       role: h.role === "character" ? "assistant" : "user",
       content: h.text
     }));

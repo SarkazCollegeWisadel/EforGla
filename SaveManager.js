@@ -21,7 +21,8 @@ const SaveManager = {
   loadFromDisk() {
     try {
       const raw = localStorage.getItem(SAVE_KEY);
-      this.slots = raw ? JSON.parse(raw) : [];
+      const parsed = raw ? JSON.parse(raw) : [];
+      this.slots = Array.isArray(parsed) ? parsed.slice(0, MAX_SLOTS) : [];
     } catch {
       this.slots = [];
     }
@@ -30,8 +31,10 @@ const SaveManager = {
   writeToDisk() {
     try {
       localStorage.setItem(SAVE_KEY, JSON.stringify(this.slots));
+      return true;
     } catch (e) {
       console.warn("[SaveManager] 写入存档失败", e);
+      return false;
     }
   },
 
@@ -69,10 +72,12 @@ const SaveManager = {
   save(index, appState, learningState) {
     const data = this.collectData(appState, learningState);
     if (index >= 0 && index < MAX_SLOTS) {
+      const previous = [...this.slots];
       this.slots[index] = { ...data, slotIndex: index };
-      this.writeToDisk();
+      if (this.writeToDisk()) return data;
+      this.slots = previous;
     }
-    return data;
+    return null;
   },
 
   load(index) {
@@ -81,17 +86,22 @@ const SaveManager = {
 
   deleteSlot(index) {
     if (index >= 0 && index < this.slots.length) {
-      this.slots.splice(index, 1);
-      this.writeToDisk();
+      const previous = this.slots[index];
+      this.slots[index] = null;
+      if (this.writeToDisk()) return true;
+      this.slots[index] = previous;
     }
+    return false;
   },
 
   autoSave(appState, learningState) {
     const data = this.collectData(appState, learningState);
     try {
       localStorage.setItem(AUTO_SAVE_KEY, JSON.stringify({ ...data, isAutoSave: true }));
+      return true;
     } catch (e) {
       console.warn("[SaveManager] 自动存档失败", e);
+      return false;
     }
   },
 
@@ -126,17 +136,30 @@ const SaveManager = {
       exp: appState?.profile?.exp || 0,
       wordCount: Object.keys(appState?.wordHistory || {}).length,
       conversationCount: lsSerialized?.conversationHistory?.length || 0,
-      settings: JSON.parse(JSON.stringify(appState?.settings || {})),
+      settings: this.portableSettings(appState?.settings),
       profile: JSON.parse(JSON.stringify(appState?.profile || {})),
       wordHistory: JSON.parse(JSON.stringify(appState?.wordHistory || {})),
       learningState: lsSerialized
     };
   },
 
+  portableSettings(settings) {
+    const copy = JSON.parse(JSON.stringify(settings || {}));
+    if (copy.ai) delete copy.ai.apiKey;
+    return copy;
+  },
+
   restoreToState(data, appState) {
     if (!data) return false;
     try {
-      if (data.settings) appState.settings = { ...appState.settings, ...JSON.parse(JSON.stringify(data.settings)) };
+      if (data.settings) {
+        const settings = this.portableSettings(data.settings);
+        appState.settings = {
+          ...appState.settings, ...settings,
+          ai: { ...appState.settings.ai, ...settings.ai },
+          voice: { ...appState.settings.voice, ...settings.voice }
+        };
+      }
       if (data.profile) appState.profile = { ...appState.profile, ...JSON.parse(JSON.stringify(data.profile)) };
       if (data.wordHistory) appState.wordHistory = JSON.parse(JSON.stringify(data.wordHistory));
       return true;
@@ -148,7 +171,8 @@ const SaveManager = {
   exportSlot(index) {
     const slot = this.slots[index];
     if (!slot) return null;
-    const blob = new Blob([JSON.stringify(slot, null, 2)], { type: "application/json" });
+    const portable = { ...slot, settings: this.portableSettings(slot.settings) };
+    const blob = new Blob([JSON.stringify(portable, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -161,10 +185,16 @@ const SaveManager = {
   importSlot(jsonData) {
     try {
       const data = typeof jsonData === "string" ? JSON.parse(jsonData) : jsonData;
-      if (!data.version || !data.settings) return false;
-      const index = this.slots.length < MAX_SLOTS ? this.slots.length : MAX_SLOTS - 1;
-      this.slots[index] = { ...data, slotIndex: index };
-      this.writeToDisk();
+      if (!data || !Number.isInteger(data.version) || data.version > SAVE_VERSION || data.version < 1 ||
+          !data.settings || typeof data.settings !== "object" || Array.isArray(data.settings)) return false;
+      let index = Array.from({ length: MAX_SLOTS }, (_, i) => i).find((i) => !this.slots[i]);
+      if (index === undefined) return false;
+      const previous = [...this.slots];
+      this.slots[index] = { ...data, settings: this.portableSettings(data.settings), slotIndex: index };
+      if (!this.writeToDisk()) {
+        this.slots = previous;
+        return false;
+      }
       return { index, data };
     } catch {
       return false;

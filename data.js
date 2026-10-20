@@ -56,8 +56,8 @@ const PROVIDER_CONFIG = {
   mock: { label: "本地离线 (Mock)", apiKey: false, endpoint: false, model: false },
   deepseek: { label: "DeepSeek", apiKey: true, endpoint: true, model: true, defaultModel: "deepseek-v4-flash", defaultEndpoint: "https://api.deepseek.com/v1" },
   openai: { label: "OpenAI", apiKey: true, endpoint: true, model: true, defaultModel: "gpt-4o", defaultEndpoint: "https://api.openai.com/v1" },
-  claude: { label: "Claude", apiKey: true, endpoint: false, model: true, defaultModel: "claude-sonnet-4-6" },
-  gemini: { label: "Gemini", apiKey: true, endpoint: false, model: true, defaultModel: "gemini-2.0-flash" }
+  claude: { label: "Claude", apiKey: true, endpoint: false, model: true, defaultModel: "claude-sonnet-4-6", defaultEndpoint: "https://api.anthropic.com/v1" },
+  gemini: { label: "Gemini", apiKey: true, endpoint: false, model: true, defaultModel: "gemini-2.0-flash", defaultEndpoint: "https://generativelanguage.googleapis.com/v1" }
 };
 
 const DEFAULT_PROVIDER = "deepseek";

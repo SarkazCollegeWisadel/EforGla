@@ -15,9 +15,7 @@ const WordManager = {
   currentVocabulary: "cet4",
 
   async init() {
-    for (const [key, info] of Object.entries(VOCABULARY_BANKS)) {
-      await this.loadBank(key, info.file);
-    }
+    await Promise.all(Object.entries(VOCABULARY_BANKS).map(([key, info]) => this.loadBank(key, info.file)));
     this.ready = true;
     return this;
   },
@@ -121,8 +119,8 @@ const WordManager = {
 
   getWordsByIds(vocabularyId, wordList) {
     const bank = this.normalized[vocabularyId || this.currentVocabulary] || [];
-    const set = new Set(wordList.map((w) => w.toLowerCase()));
-    return bank.filter((e) => set.has(e.english.toLowerCase()));
+    const index = new Map(bank.map((entry) => [entry.english.toLowerCase(), entry]));
+    return wordList.map((word) => index.get(word.toLowerCase())).filter(Boolean);
   },
 
   getDifficultyScore(word, vocabularyId) {
@@ -185,7 +183,7 @@ const WordManager = {
     for (const entry of bank) {
       const key = entry.english.toLowerCase();
       const record = wordHistory[key];
-      if (!record || !record.nextReviewAt || Date.parse(record.nextReviewAt) <= now) {
+      if (record?.learned && (!record.nextReviewAt || Date.parse(record.nextReviewAt) <= now)) {
         due.push(entry);
       }
     }
@@ -196,7 +194,7 @@ const WordManager = {
     const now = Date.now();
     let dueCount = 0;
     for (const record of Object.values(wordHistory)) {
-      if (record.nextReviewAt && Date.parse(record.nextReviewAt) <= now) {
+      if (record?.learned && (!record.nextReviewAt || Date.parse(record.nextReviewAt) <= now)) {
         dueCount++;
       }
     }
@@ -209,6 +207,7 @@ const WordManager = {
       wordHistory[key] = this.getDefaultHistory();
     }
     const record = wordHistory[key];
+    const previousLevel = record.reviewLevel || 0;
     record.count = (record.count || 0) + 1;
     if (correct) {
       record.correct = (record.correct || 0) + 1;
@@ -219,7 +218,7 @@ const WordManager = {
     }
     record.lastReviewed = new Date().toISOString();
     if (!record.firstLearnTime) record.firstLearnTime = record.lastReviewed;
-    const intervalDays = REVIEW_INTERVALS[record.reviewLevel];
+    const intervalDays = REVIEW_INTERVALS[correct ? previousLevel : 0];
     record.nextReviewAt = new Date(Date.now() + intervalDays * 86400000).toISOString();
     return record;
   },

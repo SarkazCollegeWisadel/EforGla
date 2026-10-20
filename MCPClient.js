@@ -27,17 +27,20 @@ const MCPClient = {
       if (initRes.error) return { ok: false, error: initRes.error.message || "初始化失败" };
 
       this.sessionId = initRes.headers?.get?.("mcp-session-id") || null;
-      this.connected = true;
 
       // Send initialized notification
       await this._notify("notifications/initialized");
 
       // Fetch tools
       const toolsRes = await this._call("tools/list");
-      this.tools = toolsRes?.result?.tools || [];
+      if (toolsRes.error) throw new Error(toolsRes.error.message || "获取工具列表失败");
+      if (!Array.isArray(toolsRes?.result?.tools)) throw new Error("服务器未返回有效的工具列表");
+      this.tools = toolsRes.result.tools;
+      this.connected = true;
 
       return { ok: true, tools: this.tools };
     } catch (e) {
+      this.disconnect();
       console.warn("[MCPClient] 连接失败", e);
       return { ok: false, error: e.message || "连接失败" };
     }
@@ -48,6 +51,7 @@ const MCPClient = {
     try {
       const res = await this._call("tools/call", { name, arguments: args || {} });
       if (res.error) return { ok: false, error: res.error.message };
+      if (res.result?.isError) return { ok: false, error: "工具执行失败", result: res.result };
       return { ok: true, result: res.result };
     } catch (e) {
       return { ok: false, error: e.message };
@@ -75,11 +79,13 @@ const MCPClient = {
       headers,
       body: JSON.stringify({ jsonrpc: "2.0", id, method, params })
     });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
     // For non-JSON responses (e.g., SSE stream), return early
     const contentType = res.headers.get("content-type") || "";
     if (contentType.includes("text/event-stream")) {
-      return { headers: res.headers, streaming: true };
+      await res.body?.cancel();
+      throw new Error("当前客户端仅支持 JSON 响应，暂不支持此服务器的 SSE 响应");
     }
 
     const data = await res.json();
@@ -93,13 +99,15 @@ const MCPClient = {
 
   async _notify(method, params) {
     const headers = {
-      "Content-Type": "application/json"
+      "Content-Type": "application/json",
+      "Accept": "application/json, text/event-stream"
     };
     if (this.sessionId) headers["Mcp-Session-Id"] = this.sessionId;
-    await fetch(this.url, {
+    const res = await fetch(this.url, {
       method: "POST",
       headers,
       body: JSON.stringify({ jsonrpc: "2.0", method, params })
     });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
   }
 };

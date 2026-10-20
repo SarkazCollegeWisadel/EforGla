@@ -46,5 +46,9 @@ function checkChineseAnswer(userAnswer, correctAnswer) {
   const user = normalizeAnswer(userAnswer);
   const correct = normalizeAnswer(correctAnswer);
   if (!user || !correct) return false;
-  return user.includes(correct) || correct.includes(user);
+  if (user === correct) return true;
+  // 允许填写一个完整释义，避免把“美”或“不是美丽的”判为“美丽的”。
+  return String(correctAnswer).split(/[；;，,、/\n]+/).some((meaning) =>
+    normalizeAnswer(meaning) === user
+  );
 }
