@@ -1,3 +1,5 @@
+> 分类：英语学习（topic: english-learning）
+
 # EforGla 语之恋
 
 一个 Galgame × AI 的英语学习终端。
